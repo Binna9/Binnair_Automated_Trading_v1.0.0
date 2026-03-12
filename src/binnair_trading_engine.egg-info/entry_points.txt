@@ -1,0 +1,2 @@
+[console_scripts]
+binnair-engine = binnair_engine.app.main:main
