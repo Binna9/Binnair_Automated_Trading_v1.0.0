@@ -1,2 +1,0 @@
-[console_scripts]
-binnair-engine = binnair_trading_engine.app.main:main
