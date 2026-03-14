@@ -55,20 +55,22 @@ def create_engine_from_url(
     *,
     schema: str = DEFAULT_SCHEMA,
     echo: bool = False,
-) -> "sqlalchemy.Engine":
-    """엔진 생성. schema 설정 포함."""
-    import sqlalchemy
-    connect_args: dict = {}
+):
+    """엔진 생성. 매 연결마다 search_path 설정."""
+    from sqlalchemy import event
+
     engine = create_engine(
         url,
         echo=echo,
-        connect_args=connect_args,
         future=True,
     )
     if schema and schema != "public":
-        with engine.connect() as conn:
-            conn.execute(text(f"SET search_path TO {schema}"))
-            conn.commit()
+
+        @event.listens_for(engine, "connect")
+        def _set_search_path(dbapi_conn, connection_record):
+            with dbapi_conn.cursor() as cur:
+                cur.execute(f"SET search_path TO {schema}")
+
     return engine
 
 

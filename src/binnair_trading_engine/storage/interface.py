@@ -2,9 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Protocol
-
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ..domain.models import (
     AuditLog,
@@ -16,7 +14,13 @@ from ..domain.models import (
 )
 
 if TYPE_CHECKING:
-    from ..domain.models import OrderIntent, TradeContext
+    from ..domain.models import (
+        EngineContext,
+        MarketSnapshot,
+        OrderIntent,
+        Prediction,
+        TradeContext,
+    )
 
 
 class OrderStore(Protocol):
@@ -74,4 +78,23 @@ class StorageLayer(Protocol):
         reason: str | None = None,
     ) -> None:
         """리스크 거부 등 이벤트 감사 로그 저장."""
+        ...
+
+    def save_model_inference(
+        self, snapshot: "MarketSnapshot", pred: "Prediction"
+    ) -> None:
+        """모델 추론 I/O 저장. BUY/SELL 시에만 호출 (HOLD 틱 미저장)."""
+        ...
+
+    def record_engine_start(
+        self,
+        ctx: "EngineContext",
+        paper_mode: bool,
+        config_snapshot: dict | None = None,
+    ) -> None:
+        """엔진 시작 시 engine_run 레코드 생성."""
+        ...
+
+    def record_engine_stop(self, run_id: str, status: str = "stopped") -> None:
+        """엔진 종료 시 engine_run status 업데이트."""
         ...

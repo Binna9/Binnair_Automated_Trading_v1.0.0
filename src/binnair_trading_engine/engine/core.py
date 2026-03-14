@@ -59,8 +59,12 @@ class TradingEngine:
         self._state = state_manager
 
     def start(self) -> None:
-        """엔진 시작: 상태 복구."""
+        """엔진 시작: 상태 복구, engine_run 기록."""
         self._state.start(self._ctx)
+        self._storage.record_engine_start(
+            ctx=self._ctx,
+            paper_mode=self._config.exchange.paper_mode,
+        )
         logger.info(
             "Engine started",
             extra={
@@ -70,7 +74,8 @@ class TradingEngine:
         )
 
     def stop(self) -> None:
-        """엔진 종료."""
+        """엔진 종료: engine_run status 업데이트."""
+        self._storage.record_engine_stop(self._ctx.run_id, "stopped")
         self._state.stop()
         logger.info("Engine stopped", extra={"run_id": self._ctx.run_id})
 
@@ -152,9 +157,11 @@ class TradingEngine:
         # 6. position update
         self._state.update_position(intent, order)
 
-        # 7. persistence
+        # 7. persistence (BUY/SELL 시에만 도달. HOLD는 early return)
         self._storage.save_signal(signal)
         self._storage.save_order(order)
+        if self._config.persist_model_inference:
+            self._storage.save_model_inference(snapshot, pred)
 
         if order.status.value == "FILLED":
             trade = Trade(

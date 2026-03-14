@@ -19,7 +19,7 @@
 | **order_execution** | 주문 체결 결과. raw_response에 거래소 응답 원문 |
 | **position_snapshot** | 특정 시점 포지션 스냅샷 |
 | **risk_event** | 리스크 거부/경고 이벤트 |
-| **model_inference_event** | 모델 추론 I/O (input_snapshot, output_prediction) |
+| **model_inference_event** | 모델 추론 I/O (input_snapshot, output_prediction). **BUY/SELL 시에만 저장**, HOLD 틱은 저장 안 함 |
 | **audit_log** | 모든 주요 이벤트 최종 기록 |
 
 ## 추적 필드 (replay/debug)

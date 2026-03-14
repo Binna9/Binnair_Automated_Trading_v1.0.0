@@ -4,6 +4,18 @@
 
 ## Quick Start (환경 구성)
 
+**의존성 한 줄 설치** (가상환경 활성화 후 프로젝트 루트에서):
+
+```bash
+pip install -e .
+```
+
+위 명령으로 `pyproject.toml`에 정의된 모든 의존성(sqlalchemy, pyyaml, torch, psycopg, httpx, aiohttp 등)이 설치됩니다.
+
+---
+
+전체 절차:
+
 ```bash
 # 1. venv 생성 (Python 3.12)
 python -m venv .venv
@@ -16,19 +28,15 @@ python -m venv .venv
 # Linux/macOS
 source .venv/bin/activate
 
-# 3. 의존성 설치 (Poetry 또는 uv 사용 시 venv 자동 생성)
+# 3. 의존성 설치
+pip install -e .
+```
+
+**Poetry/uv 사용 시** (venv 자동 생성):
+```bash
 poetry install
 # 또는
 uv sync
-```
-
-**Poetry/uv**: `.venv` 자동 생성 → 1~2단계 생략 가능.
-
-**pip만 사용할 경우**:
-```bash
-python -m venv .venv
-.venv\Scripts\Activate.ps1   # Windows
-pip install -e .
 ```
 
 ## 디렉터리 구조
@@ -44,6 +52,9 @@ src/binnair_trading_engine/
 │   └── models.py        # Signal, Order, OrderIntent, Position, Trade, TradeContext, Prediction, AuditLog
 ├── engine/              # 엔진 코어
 │   └── core.py          # TradingEngine, process_signal 파이프라인
+├── market_data/         # 시세 수신
+│   ├── interface.py     # MarketDataProvider
+│   └── binance_rest.py  # Binance REST ticker/price 폴링
 ├── exchange/            # 거래소 어댑터
 │   ├── interface.py     # ExchangeAdapter (Binance 기준 설계)
 │   └── paper.py         # PaperExchangeAdapter (종이거래)
@@ -112,6 +123,11 @@ run_context:
   feature_set_version: "v1"
   version: "1.0.0"
 
+market_data:
+  enabled: false   # true 시 Binance REST로 시세 폴링 → engine.run_cycle(snapshot)
+  symbol: "BTCUSDT"
+  poll_interval_seconds: 5.0
+
 exchange:
   paper_mode: true   # 기본값
 
@@ -143,9 +159,13 @@ uv run binnair-engine -c config/config.example.yaml
 - structlog (로깅)
 - pytest (테스트)
 
-## 확장 예정
+## 실거래 (Binance Spot)
 
-- 실거래 Binance 어댑터
-- 실제 PostgreSQL 연결
+`config.yaml`에서 `exchange.paper_mode: false`로 설정하고 `api_key`, `api_secret` 입력 시 Binance Spot 실거래 연동.
+
+- `BinanceSpotAdapter`: place_order, cancel_order, get_position, get_order 등 REST API 호출
+- 테스트넷: `base_url: "https://testnet.binance.vision"`
+
+## 확장 예정
 - TorchPredictor 실제 추론
-- 시그널 소스(폴링/웹소켓) 연동
+- 시세 WebSocket 구독 (현재 REST 폴링만 지원)

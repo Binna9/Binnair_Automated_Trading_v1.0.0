@@ -1,6 +1,6 @@
 """기본 리스크 체커 구현."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from binnair_trading_engine.domain.models import Order, OrderIntent, OrderSide, Position, TradeContext
 from binnair_trading_engine.risk.checker import RiskCheckResult, RiskChecker
@@ -60,7 +60,9 @@ class DefaultRiskChecker(RiskChecker):
             )
 
         # 3. 중복 주문 방지
-        cutoff = datetime.utcnow() - timedelta(seconds=self._duplicate_window_seconds)
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            seconds=self._duplicate_window_seconds
+        )
         for o in recent_orders:
             if o.symbol == intent.symbol and o.side == intent.side and o.created_at >= cutoff:
                 return RiskCheckResult(

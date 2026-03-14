@@ -34,6 +34,7 @@ class ExchangeConfig:
 @dataclass
 class StorageConfig:
     """스토리지(Postgres) 설정."""
+    backend: str = "memory"  # "memory" | "postgres"
     host: str = "localhost"
     port: int = 5432
     dbname: str = "binnair_engine"
@@ -48,6 +49,17 @@ class StorageConfig:
             f"postgresql+psycopg://{self.user}:{quote_plus(self.password)}"
             f"@{self.host}:{self.port}/{self.dbname}"
         )
+
+
+@dataclass
+class MarketDataConfig:
+    """시세 수신 설정."""
+    enabled: bool = False
+    provider: str = "binance_rest"
+    symbol: str = "BTCUSDT"
+    poll_interval_seconds: float = 5.0
+    base_url: str = "https://api.binance.com"
+    timeout: float = 10.0
 
 
 @dataclass
@@ -67,11 +79,13 @@ class EngineConfig:
     run_context: RunContext
     exchange: ExchangeConfig
     storage: StorageConfig
+    market_data: MarketDataConfig
     predictor_type: str = "dummy"
     predictor_config: PredictorTorchConfig | None = None
     risk_enabled: bool = True
     state_persist_path: Path | None = None
     log_level: str = "INFO"
+    persist_model_inference: bool = False  # BUY/SELL 시에만 model_inference_event 저장
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EngineConfig":
@@ -93,7 +107,17 @@ class EngineConfig:
             base_url=exc.get("base_url", ""),
         )
         stor = data.get("storage", {})
+        md = data.get("market_data", {})
+        md_cfg = MarketDataConfig(
+            enabled=md.get("enabled", False),
+            provider=md.get("provider", "binance_rest"),
+            symbol=md.get("symbol", "BTCUSDT"),
+            poll_interval_seconds=float(md.get("poll_interval_seconds", 5.0)),
+            base_url=md.get("base_url", "https://api.binance.com"),
+            timeout=float(md.get("timeout", 10.0)),
+        )
         stor_cfg = StorageConfig(
+            backend=stor.get("backend", "memory"),
             host=stor.get("host", "localhost"),
             port=int(stor.get("port", 5432)),
             dbname=stor.get("dbname", "binnair_engine"),
@@ -116,11 +140,13 @@ class EngineConfig:
             run_context=run_ctx,
             exchange=exc_cfg,
             storage=stor_cfg,
+            market_data=md_cfg,
             predictor_type=data.get("predictor_type", "dummy"),
             predictor_config=pred_torch,
             risk_enabled=data.get("risk_enabled", True),
             state_persist_path=Path(sp) if sp else None,
             log_level=data.get("log_level", "INFO"),
+            persist_model_inference=data.get("persist_model_inference", False),
         )
 
 

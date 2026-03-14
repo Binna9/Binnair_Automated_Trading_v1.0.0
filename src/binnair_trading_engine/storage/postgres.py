@@ -3,12 +3,15 @@
 from datetime import datetime, timedelta
 
 from ..domain.models import (
+    EngineContext,
+    MarketSnapshot,
     OrderSide,
     AuditLog,
     Order,
     OrderIntent,
     OrderStatus,
     Position,
+    Prediction,
     Signal,
     Trade,
     TradeContext,
@@ -64,6 +67,12 @@ class PostgresStorage(
 
     def save_signal(self, signal: Signal) -> None:
         self._signals.append(signal)
+
+    def save_model_inference(
+        self, snapshot: MarketSnapshot, pred: Prediction
+    ) -> None:
+        """BUY/SELL 시에만 호출. 현재는 no-op (infra persistence 연동 시 구현)."""
+        pass
 
     def get_signals(
         self, run_id: str, symbol: str, limit: int = 100
@@ -124,3 +133,14 @@ class PostgresStorage(
             data=data,
         )
         self.append(log)
+
+    def record_engine_start(
+        self,
+        ctx: EngineContext,
+        paper_mode: bool,
+        config_snapshot: dict | None = None,
+    ) -> None:
+        pass
+
+    def record_engine_stop(self, run_id: str, status: str = "stopped") -> None:
+        pass
