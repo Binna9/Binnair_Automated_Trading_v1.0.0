@@ -57,7 +57,7 @@ pip install -e .
 ## 디렉터리 구조
 
 ```
-src/binnair_engine/
+src/binnair_trading_engine/
 ├── app/                 # 부트스트랩 및 진입점
 │   ├── bootstrap.py     # 설정 로드, DI, 엔진 인스턴스 생성
 │   └── main.py           # CLI 진입점
