@@ -118,6 +118,7 @@ class PostgresStorage(
         intent: OrderIntent,
         ctx: TradeContext,
         reason: str | None = None,
+        extra_data: dict | None = None,
     ) -> None:
         data: dict = {
             "intent_symbol": intent.symbol,
@@ -126,6 +127,8 @@ class PostgresStorage(
         }
         if reason:
             data["reason"] = reason
+        if extra_data:
+            data.update(extra_data)
         log = AuditLog(
             event=event,
             run_id=ctx.run_id,

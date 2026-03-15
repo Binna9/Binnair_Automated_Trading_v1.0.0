@@ -83,7 +83,7 @@ class StorageLayer(Protocol):
     def save_model_inference(
         self, snapshot: "MarketSnapshot", pred: "Prediction"
     ) -> None:
-        """모델 추론 I/O 저장. BUY/SELL 시에만 호출 (HOLD 틱 미저장)."""
+        """모델 추론 I/O 저장. Predictor.predict() 직후 매 틱마다 호출."""
         ...
 
     def record_engine_start(

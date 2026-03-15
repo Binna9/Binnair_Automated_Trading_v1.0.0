@@ -178,6 +178,7 @@ class EngineRunCreate:
     paper_mode: bool
     started_at: datetime
     config_snapshot: dict[str, Any] | None = None
+    user_id: str = "default"
 
 
 @dataclass
@@ -187,6 +188,7 @@ class StrategyConfigSnapshotCreate:
     snapshot_at: datetime
     config_json: dict[str, Any]
     paper_mode: bool
+    user_id: str = "default"
 
 
 @dataclass
@@ -202,6 +204,7 @@ class SignalEventCreate:
     event_at: datetime
     timeframe: str | None = None
     model_version: str | None = None
+    user_id: str = "default"
 
 
 @dataclass
@@ -218,6 +221,7 @@ class OrderRequestCreate:
     requested_at: datetime
     order_id: str | None = None
     client_order_id: str | None = None
+    user_id: str = "default"
 
 
 @dataclass
@@ -233,6 +237,7 @@ class OrderExecutionCreate:
     paper_mode: bool
     executed_at: datetime
     order_request_id: int | None = None
+    user_id: str = "default"
 
 
 @dataclass
@@ -245,6 +250,16 @@ class PositionSnapshotCreate:
     unrealized_pnl: float
     paper_mode: bool
     snapshot_at: datetime
+    side: str | None = None  # LONG | SHORT
+    tp_price: float | None = None
+    sl_price: float | None = None
+    status: str | None = None  # OPEN | CLOSED
+    opened_at: datetime | None = None
+    closed_at: datetime | None = None
+    realized_pnl: float | None = None  # 청산 시 실현 손익
+    exit_reason: str | None = None  # TAKE_PROFIT | STOP_LOSS
+    exit_price: float | None = None  # 청산가
+    user_id: str = "default"
 
 
 @dataclass
@@ -257,6 +272,7 @@ class RiskEventCreate:
     intent_data: dict[str, Any] | None
     paper_mode: bool
     event_at: datetime
+    user_id: str = "default"
 
 
 @dataclass
@@ -270,6 +286,7 @@ class ModelInferenceEventCreate:
     output_prediction: dict[str, Any]
     paper_mode: bool
     inference_at: datetime
+    user_id: str = "default"
 
 
 @dataclass
@@ -279,3 +296,4 @@ class AuditLogCreate:
     data: dict[str, Any]
     paper_mode: bool
     correlation_id: str = ""
+    user_id: str = "default"

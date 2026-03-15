@@ -4,7 +4,7 @@ Paper trading 기본, 환경변수/파일 기반 로딩.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,7 @@ class RunContext:
     model_version: str
     feature_set_version: str
     version: str = "1.0.0"
+    user_id: str = "default"  # 사용자별 이력 분리 (UUID 등 VARCHAR 36)
 
 
 @dataclass
@@ -63,6 +64,14 @@ class MarketDataConfig:
 
 
 @dataclass
+class TradeRulesConfig:
+    """진입/청산 규칙 (TP/SL 등)."""
+
+    tp_pct: float = 0.02  # TP: 목표가 = 체결가 * (1 + tp_pct)
+    sl_pct: float = 0.01  # SL: 손절가 = 체결가 * (1 - sl_pct)
+
+
+@dataclass
 class PredictorTorchConfig:
     """TorchPredictor 아티팩트 설정."""
     model_path: str = ""
@@ -80,6 +89,7 @@ class EngineConfig:
     exchange: ExchangeConfig
     storage: StorageConfig
     market_data: MarketDataConfig
+    trade_rules: TradeRulesConfig = field(default_factory=TradeRulesConfig)
     predictor_type: str = "dummy"
     predictor_config: PredictorTorchConfig | None = None
     risk_enabled: bool = True
@@ -97,6 +107,7 @@ class EngineConfig:
             model_version=run.get("model_version", "v1"),
             feature_set_version=run.get("feature_set_version", "v1"),
             version=run.get("version", "1.0.0"),
+            user_id=run.get("user_id", "default"),
         )
         exc = data.get("exchange", {})
         exc_cfg = ExchangeConfig(
@@ -125,6 +136,11 @@ class EngineConfig:
             password=stor.get("password", ""),
             schema=stor.get("schema", "trade"),
         )
+        tr = data.get("trade_rules", {})
+        trade_rules_cfg = TradeRulesConfig(
+            tp_pct=float(tr.get("tp_pct", 0.02)),
+            sl_pct=float(tr.get("sl_pct", 0.01)),
+        )
         pc = data.get("predictor_config") or {}
         tor = pc.get("torch") or {}
         pred_torch = PredictorTorchConfig(
@@ -141,6 +157,7 @@ class EngineConfig:
             exchange=exc_cfg,
             storage=stor_cfg,
             market_data=md_cfg,
+            trade_rules=trade_rules_cfg,
             predictor_type=data.get("predictor_type", "dummy"),
             predictor_config=pred_torch,
             risk_enabled=data.get("risk_enabled", True),

@@ -9,11 +9,13 @@ from binnair_trading_engine.config import load_config
 from binnair_trading_engine.engine import TradingEngine
 from binnair_trading_engine.domain.models import EngineContext
 from binnair_trading_engine.exchange import create_exchange
+from binnair_trading_engine.position import PositionManager
 from binnair_trading_engine.predictor import create_predictor
 from binnair_trading_engine.risk import create_risk_checker
 from binnair_trading_engine.state import create_state_manager
 from binnair_trading_engine.storage import create_storage
 from binnair_trading_engine.strategy import create_strategy
+from binnair_trading_engine.strategy.exit_manager import ExitManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
         strategy_id=rc.strategy_id,
         model_version=rc.model_version,
         feature_set_version=rc.feature_set_version,
+        user_id=rc.user_id,
     )
 
     exchange = create_exchange(config)
@@ -39,6 +42,8 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
     storage = create_storage(config)
     state_manager = create_state_manager(config)
     strategy = create_strategy(config)
+    position_manager = PositionManager(run_id=rc.run_id)
+    exit_manager = ExitManager()
 
     engine = TradingEngine(
         config=config,
@@ -49,5 +54,7 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
         strategy=strategy,
         storage=storage,
         state_manager=state_manager,
+        position_manager=position_manager,
+        exit_manager=exit_manager,
     )
     return engine

@@ -67,15 +67,42 @@ class Order:
 
 @dataclass
 class Position:
-    """포지션 도메인 모델."""
+    """
+    포지션 도메인 모델.
+    엔진이 참조하는 현재 보유 상태의 기준 객체.
+    초기 버전: single symbol / single position / long only.
+    수량 0이면 CLOSED.
+    """
 
     symbol: str
     quantity: float
     avg_entry_price: float
+    side: str = "LONG"  # LONG | SHORT. 초기 버전은 LONG만 지원
+    tp_price: float | None = None
+    sl_price: float | None = None
+    status: str = "OPEN"  # OPEN | CLOSED
+    opened_at: datetime = field(default_factory=datetime.utcnow)
+    closed_at: datetime | None = None
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+    # 호환성 유지
     position_id: str = ""
     run_id: str = ""
     unrealized_pnl: float = 0.0
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    realized_pnl: float = 0.0  # 청산 시 (exit_price - avg_entry_price) * quantity (LONG)
+    exit_reason: str = ""  # TAKE_PROFIT | STOP_LOSS (청산 시에만)
+    exit_price: float = 0.0  # 청산가 (청산 시에만)
+
+    def is_open(self) -> bool:
+        """포지션이 보유 중인지. 수량 0이면 False."""
+        return self.status == "OPEN" and self.quantity > 0
+
+    def is_long(self) -> bool:
+        """롱 포지션인지."""
+        return self.side == "LONG"
+
+    def is_closed(self) -> bool:
+        """청산 완료 여부. 수량 0이면 CLOSED로 간주."""
+        return self.status == "CLOSED" or self.quantity <= 0
 
 
 @dataclass
@@ -164,6 +191,7 @@ class EngineContext:
     strategy_id: str
     model_version: str
     feature_set_version: str
+    user_id: str = "default"  # 사용자별 이력 분리
 
 
 @dataclass

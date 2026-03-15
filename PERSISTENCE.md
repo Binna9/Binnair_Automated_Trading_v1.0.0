@@ -22,9 +22,16 @@
 | **model_inference_event** | 모델 추론 I/O (input_snapshot, output_prediction). **BUY/SELL 시에만 저장**, HOLD 틱은 저장 안 함 |
 | **audit_log** | 모든 주요 이벤트 최종 기록 |
 
+## 사용자별 이력 분리 (user_id)
+
+모든 이력/주문 테이블에 `user_id VARCHAR(36)` 컬럼 존재. 사용자별 이력 조회·관리용.
+
+- config `run_context.user_id` (기본값 `"default"`)
+- Web 로그인 시 사용자 UUID 전달 예정
+
 ## 추적 필드 (replay/debug)
 
-- `run_id`, `strategy_id`, `symbol`, `timeframe`, `model_version`, `feature_set_version`
+- `user_id`, `run_id`, `strategy_id`, `symbol`, `timeframe`, `model_version`, `feature_set_version`
 - `timestamp`/`event_at`/`snapshot_at`/`executed_at`
 - `paper_mode`: paper/live 구분
 - `correlation_id`: 이벤트 연관 추적

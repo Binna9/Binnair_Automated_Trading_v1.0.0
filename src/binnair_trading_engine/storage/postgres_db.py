@@ -28,6 +28,7 @@ from ..infra.persistence.dto import (
     ModelInferenceEventCreate,
     OrderExecutionCreate,
     OrderRequestCreate,
+    PositionSnapshotCreate,
     SignalEventCreate,
 )
 from ..infra.persistence.repositories.postgres import PostgresRepositoryFactory
@@ -79,6 +80,7 @@ class PostgresDbStorage(
         self._repos = PostgresRepositoryFactory()
         self._paper_mode = config.exchange.paper_mode
         self._run_id = config.run_context.run_id
+        self._user_id = getattr(config.run_context, "user_id", "default")
         self._strategy_id = config.run_context.strategy_id
         self._model_version = config.run_context.model_version
         self._feature_set_version = config.run_context.feature_set_version
@@ -88,6 +90,7 @@ class PostgresDbStorage(
         req = OrderRequestCreate(
             run_id=order.run_id or self._run_id,
             strategy_id=self._strategy_id,
+            user_id=self._user_id,
             symbol=order.symbol,
             side=order.side.value,
             order_type=order.order_type.value,
@@ -107,6 +110,7 @@ class PostgresDbStorage(
             ex = OrderExecutionCreate(
                 run_id=order.run_id or self._run_id,
                 strategy_id=self._strategy_id,
+                user_id=self._user_id,
                 symbol=order.symbol,
                 order_id=order.order_id or "",
                 status=order.status.value,
@@ -125,7 +129,9 @@ class PostgresDbStorage(
     def get_recent_orders(
         self, run_id: str, symbol: str, limit: int = 50
     ) -> list[Order]:
-        return self._repos.order_request.get_recent(run_id, symbol, limit)
+        return self._repos.order_request.get_recent(
+            run_id, symbol, limit, user_id=self._user_id
+        )
 
     def update_order_status(self, order_id: str, status: OrderStatus) -> None:
         pass
@@ -134,6 +140,7 @@ class PostgresDbStorage(
         dto = SignalEventCreate(
             run_id=signal.run_id or self._run_id,
             strategy_id=signal.strategy_id or self._strategy_id,
+            user_id=self._user_id,
             symbol=signal.symbol,
             signal_action=signal.action.value,
             confidence=signal.confidence,
@@ -151,6 +158,7 @@ class PostgresDbStorage(
         dto = ModelInferenceEventCreate(
             run_id=snapshot.run_id or self._run_id,
             strategy_id=self._strategy_id,
+            user_id=self._user_id,
             symbol=snapshot.symbol,
             model_version=self._model_version,
             feature_set_version=self._feature_set_version,
@@ -165,10 +173,48 @@ class PostgresDbStorage(
         return []
 
     def save_position(self, position: Position) -> None:
-        pass
+        """포지션 스냅샷을 position_snapshot 테이블에 저장."""
+        realized_pnl = getattr(position, "realized_pnl", None)
+        exit_reason = getattr(position, "exit_reason", None) or None
+        exit_price = getattr(position, "exit_price", None)
+        # OPEN 포지션은 exit_reason 없음 → exit_price도 None
+        if exit_price is not None and not exit_reason:
+            exit_price = None
+        dto = PositionSnapshotCreate(
+            run_id=position.run_id or self._run_id,
+            strategy_id=self._strategy_id,
+            user_id=self._user_id,
+            symbol=position.symbol,
+            side=position.side,
+            quantity=position.quantity,
+            avg_entry_price=position.avg_entry_price,
+            tp_price=position.tp_price,
+            sl_price=position.sl_price,
+            status=position.status,
+            unrealized_pnl=position.unrealized_pnl,
+            opened_at=_dt(position.opened_at) if position.opened_at else _dt(None),
+            closed_at=_dt(position.closed_at) if position.closed_at else None,
+            paper_mode=self._paper_mode,
+            snapshot_at=_dt(None),
+            realized_pnl=realized_pnl,
+            exit_reason=exit_reason,
+            exit_price=exit_price,
+        )
+        self._repos.position_snapshot.create(dto)
 
     def get_positions(self, run_id: str) -> list[Position]:
         return []
+
+    def get_latest_open_position_snapshots(self, symbols: list[str]) -> list[dict]:
+        """
+        심볼별 최신 OPEN 포지션 스냅샷 반환.
+        run_id 무관, DB position_snapshot 기준. 재기동 시 복구용.
+        """
+        if not symbols:
+            return []
+        return self._repos.position_snapshot.get_latest_open_per_symbol(
+            symbols, user_id=self._user_id
+        )
 
     def save_trade(self, trade: Trade) -> None:
         pass
@@ -182,7 +228,9 @@ class PostgresDbStorage(
         pass
 
     def get_daily_pnl(self, run_id: str) -> float:
-        return self._repos.order_execution.get_daily_pnl(run_id)
+        return self._repos.order_execution.get_daily_pnl(
+            run_id, user_id=self._user_id
+        )
 
     def save_audit(
         self,
@@ -190,6 +238,7 @@ class PostgresDbStorage(
         intent: OrderIntent,
         ctx: TradeContext,
         reason: str | None = None,
+        extra_data: dict | None = None,
     ) -> None:
         data: dict = {
             "intent_symbol": intent.symbol,
@@ -198,6 +247,8 @@ class PostgresDbStorage(
         }
         if reason:
             data["reason"] = reason
+        if extra_data:
+            data.update(extra_data)
         corr = getattr(ctx, "correlation_id", "") or ""
         dto = AuditLogCreate(
             run_id=ctx.run_id,
@@ -205,6 +256,7 @@ class PostgresDbStorage(
             data=data,
             paper_mode=self._paper_mode,
             correlation_id=corr,
+            user_id=self._user_id,
         )
         self._repos.audit_log.create(dto)
 
@@ -223,8 +275,11 @@ class PostgresDbStorage(
             paper_mode=paper_mode,
             started_at=_dt(None),
             config_snapshot=config_snapshot,
+            user_id=getattr(ctx, "user_id", "default"),
         )
         self._repos.engine_run.create(dto)
 
     def record_engine_stop(self, run_id: str, status: str = "stopped") -> None:
-        self._repos.engine_run.update_status(run_id, status)
+        self._repos.engine_run.update_status(
+            run_id, status, user_id=self._user_id
+        )

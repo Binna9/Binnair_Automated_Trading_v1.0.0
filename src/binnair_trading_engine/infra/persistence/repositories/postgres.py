@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 
 from binnair_trading_engine.infra.persistence.dto import (
@@ -85,7 +85,10 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             existing = session.execute(
-                select(EngineRunModel).where(EngineRunModel.run_id == dto.run_id)
+                select(EngineRunModel).where(
+                    EngineRunModel.run_id == dto.run_id,
+                    EngineRunModel.user_id == (dto.user_id or "default"),
+                )
             ).scalars().first()
             if existing:
                 existing.status = "running"
@@ -95,11 +98,12 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
                 session.commit()
                 return dto.run_id
             m = EngineRunModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 model_version=dto.model_version,
                 feature_set_version=dto.feature_set_version,
-                version="1.0.0",
+                version=dto.version,
                 paper_mode=dto.paper_mode,
                 status="running",
                 started_at=dto.started_at,
@@ -116,12 +120,17 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
-    def update_status(self, run_id: str, status: EngineRunStatus) -> None:
+    def update_status(
+        self, run_id: str, status: EngineRunStatus, user_id: str = "default"
+    ) -> None:
         session = self._session()
         try:
             stmt = (
                 select(EngineRunModel)
-                .where(EngineRunModel.run_id == run_id)
+                .where(
+                    EngineRunModel.run_id == run_id,
+                    EngineRunModel.user_id == user_id,
+                )
             )
             row = session.execute(stmt).scalars().first()
             if row:
@@ -152,6 +161,7 @@ class StrategyConfigSnapshotPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = StrategyConfigSnapshotModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 snapshot_at=dto.snapshot_at,
@@ -177,6 +187,7 @@ class SignalEventPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = SignalEventModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 symbol=dto.symbol,
@@ -208,6 +219,7 @@ class OrderRequestPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = OrderRequestModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 symbol=dto.symbol,
@@ -233,7 +245,7 @@ class OrderRequestPostgresRepository(_BasePostgresRepository):
             session.close()
 
     def get_recent(
-        self, run_id: str, symbol: str, limit: int = 50
+        self, run_id: str, symbol: str, limit: int = 50, user_id: str = "default"
     ) -> list["Order"]:
         from binnair_trading_engine.domain.models import (
             Order,
@@ -249,6 +261,7 @@ class OrderRequestPostgresRepository(_BasePostgresRepository):
                 .where(
                     OrderRequestModel.run_id == run_id,
                     OrderRequestModel.symbol == symbol,
+                    OrderRequestModel.user_id == user_id,
                 )
                 .order_by(OrderRequestModel.requested_at.desc())
                 .limit(limit)
@@ -282,6 +295,7 @@ class OrderExecutionPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = OrderExecutionModel(
+                user_id=dto.user_id or "default",
                 order_request_id=dto.order_request_id,
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
@@ -305,7 +319,7 @@ class OrderExecutionPostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
-    def get_daily_pnl(self, run_id: str) -> float:
+    def get_daily_pnl(self, run_id: str, user_id: str = "default") -> float:
         """당일 실현손익 (SELL +, BUY -). order_request와 join해 side 사용."""
         session = self._session()
         try:
@@ -317,9 +331,11 @@ class OrderExecutionPostgresRepository(_BasePostgresRepository):
                 SELECT req.side, ex.executed_price, ex.executed_quantity
                 FROM "{schema}".order_execution ex
                 JOIN "{schema}".order_request req ON ex.order_request_id = req.id
-                WHERE ex.run_id = :run_id AND ex.executed_at >= :today
+                WHERE ex.run_id = :run_id AND ex.user_id = :user_id AND ex.executed_at >= :today
             """)
-            result = session.execute(stmt, {"run_id": run_id, "today": today})
+            result = session.execute(
+                stmt, {"run_id": run_id, "user_id": user_id, "today": today}
+            )
             pnl = 0.0
             for row in result:
                 side, price, qty = row[0], row[1] or 0.0, row[2] or 0.0
@@ -337,12 +353,22 @@ class PositionSnapshotPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = PositionSnapshotModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 symbol=dto.symbol,
+                side=dto.side,
                 quantity=dto.quantity,
                 avg_entry_price=dto.avg_entry_price,
+                tp_price=dto.tp_price,
+                sl_price=dto.sl_price,
+                status=dto.status,
                 unrealized_pnl=dto.unrealized_pnl,
+                realized_pnl=dto.realized_pnl,
+                exit_reason=dto.exit_reason,
+                exit_price=dto.exit_price,
+                opened_at=dto.opened_at,
+                closed_at=dto.closed_at,
                 paper_mode=dto.paper_mode,
                 snapshot_at=dto.snapshot_at,
             )
@@ -357,6 +383,33 @@ class PositionSnapshotPostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
+    def get_latest_open_per_symbol(
+        self, symbols: list[str], user_id: str = "default"
+    ) -> list[dict]:
+        """
+        심볼별 최신 OPEN 포지션 스냅샷 반환.
+        run_id 무관, snapshot_at 기준 최신 1건/심볼. user_id로 사용자별 필터.
+        """
+        if not symbols:
+            return []
+        session = self._session()
+        try:
+            schema = PositionSnapshotModel.__table__.schema or "trade"
+            stmt = text(f"""
+                SELECT DISTINCT ON (symbol)
+                    id, run_id, strategy_id, symbol, side, quantity, avg_entry_price,
+                    tp_price, sl_price, status, opened_at, snapshot_at
+                FROM "{schema}".position_snapshot
+                WHERE status = 'OPEN' AND symbol IN :symbols AND user_id = :user_id
+                ORDER BY symbol, snapshot_at DESC
+            """).bindparams(bindparam("symbols", expanding=True))
+            result = session.execute(stmt, {"symbols": symbols, "user_id": user_id})
+            rows = result.fetchall()
+            cols = result.keys()
+            return [dict(zip(cols, r)) for r in rows]
+        finally:
+            session.close()
+
 
 class RiskEventPostgresRepository(_BasePostgresRepository):
     """risk_event 테이블 repository."""
@@ -365,6 +418,7 @@ class RiskEventPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = RiskEventModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 symbol=dto.symbol,
@@ -396,6 +450,7 @@ class ModelInferenceEventPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = ModelInferenceEventModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 strategy_id=dto.strategy_id,
                 symbol=dto.symbol,
@@ -425,6 +480,7 @@ class AuditLogPostgresRepository(_BasePostgresRepository):
         session = self._session()
         try:
             m = AuditLogModel(
+                user_id=dto.user_id or "default",
                 run_id=dto.run_id,
                 correlation_id=dto.correlation_id or "",
                 event=dto.event,

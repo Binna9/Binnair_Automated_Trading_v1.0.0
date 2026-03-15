@@ -32,19 +32,20 @@ class EngineRunModel(Base):
 
     __tablename__ = "engine_run"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    model_version: Mapped[str] = mapped_column(String(64), index=True)
-    feature_set_version: Mapped[str] = mapped_column(String(64), index=True)
-    version: Mapped[str] = mapped_column(String(32), default="1.0.0")
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    status: Mapped[str] = mapped_column(String(32), default="running")  # running|stopped|error
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    config_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), unique=True, index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    model_version: Mapped[str] = mapped_column(String(64), index=True, comment="모델 버전")
+    feature_set_version: Mapped[str] = mapped_column(String(64), index=True, comment="피처 버전")
+    version: Mapped[str] = mapped_column(String(32), default="1.0.0", comment="엔진 버전")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래 여부")
+    status: Mapped[str] = mapped_column(String(32), default="running", comment="running|stopped|error")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="시작 시각")
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, comment="종료 시각")
+    config_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="설정 스냅샷")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="수정")
 
 
 # ---------------------------------------------------------------------------
@@ -58,13 +59,14 @@ class StrategyConfigSnapshotModel(Base):
 
     __tablename__ = "strategy_config_snapshot"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    config_json: Mapped[dict] = mapped_column(JSONB)
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="스냅샷 시각")
+    config_json: Mapped[dict] = mapped_column(JSONB, comment="설정 JSON")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
 
 # ---------------------------------------------------------------------------
@@ -78,19 +80,20 @@ class SignalEventModel(Base):
 
     __tablename__ = "signal_event"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    symbol: Mapped[str] = mapped_column(String(32), index=True)
-    timeframe: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    model_version: Mapped[str] = mapped_column(String(64), index=True)
-    signal_action: Mapped[str] = mapped_column(String(16))  # BUY|SELL|HOLD
-    confidence: Mapped[float] = mapped_column(Float, default=0.0)
-    price_hint: Mapped[float | None] = mapped_column(Float, nullable=True)
-    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="")
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    timeframe: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="타임프레임")
+    model_version: Mapped[str] = mapped_column(String(64), index=True, comment="모델 버전")
+    signal_action: Mapped[str] = mapped_column(String(16), comment="BUY|SELL|HOLD")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, comment="신뢰도")
+    price_hint: Mapped[float | None] = mapped_column(Float, nullable=True, comment="참고가")
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="", comment="추적 ID")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="이벤트 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
     __table_args__ = (Index("ix_signal_event_run_symbol_at", "run_id", "symbol", "event_at"),)
 
@@ -105,20 +108,21 @@ class OrderRequestModel(Base):
 
     __tablename__ = "order_request"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    symbol: Mapped[str] = mapped_column(String(32), index=True)
-    order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # 거래소 order_id
-    client_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    side: Mapped[str] = mapped_column(String(16))  # BUY|SELL
-    order_type: Mapped[str] = mapped_column(String(16))  # MARKET|LIMIT
-    quantity: Mapped[float] = mapped_column(Float)
-    price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="")
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True, comment="거래소 주문 ID")
+    client_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="클라이언트 주문 ID")
+    side: Mapped[str] = mapped_column(String(16), comment="BUY|SELL")
+    order_type: Mapped[str] = mapped_column(String(16), comment="MARKET|LIMIT")
+    quantity: Mapped[float] = mapped_column(Float, comment="수량")
+    price: Mapped[float | None] = mapped_column(Float, nullable=True, comment="가격")
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="", comment="추적 ID")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="요청 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
 
 # ---------------------------------------------------------------------------
@@ -132,21 +136,22 @@ class OrderExecutionModel(Base):
 
     __tablename__ = "order_execution"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
     order_request_id: Mapped[int | None] = mapped_column(
-        ForeignKey("order_request.id"), nullable=True, index=True
+        ForeignKey("order_request.id"), nullable=True, index=True, comment="주문요청 FK"
     )
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    symbol: Mapped[str] = mapped_column(String(32), index=True)
-    order_id: Mapped[str] = mapped_column(String(64), index=True)
-    status: Mapped[str] = mapped_column(String(32))  # FILLED|CANCELLED|REJECTED
-    executed_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    executed_quantity: Mapped[float] = mapped_column(Float)
-    raw_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # 거래소 원문
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    order_id: Mapped[str] = mapped_column(String(64), index=True, comment="거래소 주문 ID")
+    status: Mapped[str] = mapped_column(String(32), comment="FILLED|CANCELLED|REJECTED")
+    executed_price: Mapped[float | None] = mapped_column(Float, nullable=True, comment="체결가")
+    executed_quantity: Mapped[float] = mapped_column(Float, comment="체결 수량")
+    raw_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="거래소 원문")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="체결 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
 
 # ---------------------------------------------------------------------------
@@ -155,21 +160,31 @@ class OrderExecutionModel(Base):
 class PositionSnapshotModel(Base):
     """
     포지션 스냅샷.
-    특정 시점 포지션 상태 (replay/debug).
+    특정 시점 포지션 상태 (replay/debug). TP/SL, side 포함.
     """
 
     __tablename__ = "position_snapshot"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    symbol: Mapped[str] = mapped_column(String(32), index=True)
-    quantity: Mapped[float] = mapped_column(Float)
-    avg_entry_price: Mapped[float] = mapped_column(Float)
-    unrealized_pnl: Mapped[float] = mapped_column(Float, default=0.0)
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    side: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="LONG|SHORT")
+    quantity: Mapped[float] = mapped_column(Float, comment="수량")
+    avg_entry_price: Mapped[float] = mapped_column(Float, comment="평균 진입가")
+    tp_price: Mapped[float | None] = mapped_column(Float, nullable=True, comment="목표가")
+    sl_price: Mapped[float | None] = mapped_column(Float, nullable=True, comment="손절가")
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="OPEN|CLOSED")
+    unrealized_pnl: Mapped[float] = mapped_column(Float, default=0.0, comment="미실현 손익")
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True, comment="실현 손익")
+    exit_reason: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="TAKE_PROFIT|STOP_LOSS")
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True, comment="청산가")
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, comment="진입 시각")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, comment="청산 시각")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="스냅샷 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
     __table_args__ = (Index("ix_position_snapshot_run_symbol_at", "run_id", "symbol", "snapshot_at"),)
 
@@ -184,16 +199,17 @@ class RiskEventModel(Base):
 
     __tablename__ = "risk_event"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    symbol: Mapped[str] = mapped_column(String(32), index=True)
-    event_type: Mapped[str] = mapped_column(String(64))  # risk_rejected, etc.
-    reason: Mapped[str] = mapped_column(Text)
-    intent_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    event_type: Mapped[str] = mapped_column(String(64), comment="risk_rejected 등")
+    reason: Mapped[str] = mapped_column(Text, comment="사유")
+    intent_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="의도 데이터")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="이벤트 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
 
 # ---------------------------------------------------------------------------
@@ -207,17 +223,18 @@ class ModelInferenceEventModel(Base):
 
     __tablename__ = "model_inference_event"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    strategy_id: Mapped[str] = mapped_column(String(128), index=True)
-    symbol: Mapped[str] = mapped_column(String(32), index=True)
-    model_version: Mapped[str] = mapped_column(String(64), index=True)
-    feature_set_version: Mapped[str] = mapped_column(String(64), index=True)
-    input_snapshot: Mapped[dict] = mapped_column(JSONB)  # MarketSnapshot
-    output_prediction: Mapped[dict] = mapped_column(JSONB)  # Prediction
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    inference_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    model_version: Mapped[str] = mapped_column(String(64), index=True, comment="모델 버전")
+    feature_set_version: Mapped[str] = mapped_column(String(64), index=True, comment="피처 버전")
+    input_snapshot: Mapped[dict] = mapped_column(JSONB, comment="입력 MarketSnapshot")
+    output_prediction: Mapped[dict] = mapped_column(JSONB, comment="출력 Prediction")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    inference_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="추론 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
 
 # ---------------------------------------------------------------------------
@@ -231,10 +248,11 @@ class AuditLogModel(Base):
 
     __tablename__ = "audit_log"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(String(128), index=True)
-    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="")
-    event: Mapped[str] = mapped_column(String(64), index=True)
-    data: Mapped[dict] = mapped_column(JSONB, default=dict)
-    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="", comment="추적 ID")
+    event: Mapped[str] = mapped_column(String(64), index=True, comment="이벤트명")
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, comment="추가 데이터")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
