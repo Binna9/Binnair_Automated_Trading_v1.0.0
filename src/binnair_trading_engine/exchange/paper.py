@@ -96,5 +96,7 @@ class PaperExchangeAdapter(ExchangeAdapter):
             order_type=intent.order_type,
             quantity=intent.quantity,
             price=price,
+            reduce_only=intent.reduce_only,
+            position_side=intent.position_side,
         )
         return self.place_order(order)

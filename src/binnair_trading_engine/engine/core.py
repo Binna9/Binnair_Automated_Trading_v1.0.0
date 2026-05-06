@@ -160,8 +160,8 @@ class TradingEngine:
         if intent is None:
             return
 
-        # 3b. 추가 진입 금지: 이미 포지션 있으면 BUY 생성 안 함
-        if intent.side == OrderSide.BUY and self._position_manager.has_open_position(symbol):
+        # 3b. 추가 진입 금지: 이미 포지션 있으면 신규 진입 생성 안 함
+        if self._position_manager.has_open_position(symbol):
             logger.debug(
                 "Skip entry: already has open position",
                 extra={"run_id": run_id, "symbol": symbol, "correlation_id": corr_id},
@@ -219,16 +219,16 @@ class TradingEngine:
             )
             self._storage.save_trade(trade)
 
-            # 진입 체결 시 PositionManager에 포지션 생성 + TP/SL 계산 + position_snapshot 저장
-            if order.side == OrderSide.BUY and order.price is not None:
+            # 진입 체결 시 PositionManager에 포지션 생성 + position_snapshot 저장
+            if order.side in (OrderSide.BUY, OrderSide.SELL) and order.price is not None:
                 if not self._position_manager.has_open_position(symbol):
-                    rules = self._config.trade_rules
                     executed_price = order.price
-                    tp_price = executed_price * (1.0 + rules.tp_pct)
-                    sl_price = executed_price * (1.0 - rules.sl_pct)
+                    side = "LONG" if order.side == OrderSide.BUY else "SHORT"
+                    tp_price = intent.take_profit_price
+                    sl_price = intent.stop_loss_price
                     pos = self._position_manager.open_position(
                         symbol=symbol,
-                        side="LONG",
+                        side=side,
                         quantity=order.quantity,
                         entry_price=executed_price,
                         tp_price=tp_price,
@@ -246,12 +246,24 @@ class TradingEngine:
                             "correlation_id": corr_id,
                         },
                     )
+                    if self._config.exchange.oco_enabled:
+                        exit_orders = self._exchange.place_exit_orders(
+                            symbol=symbol,
+                            position_side=side,
+                            quantity=order.quantity,
+                            take_profit_price=tp_price,
+                            stop_loss_price=sl_price,
+                        )
+                        for eo in exit_orders:
+                            eo.run_id = run_id
+                            eo.correlation_id = corr_id
+                            self._storage.save_order(eo)
                 else:
                     logger.warning(
                         "Skip position creation: already has open position (unexpected)",
                         extra={"run_id": run_id, "symbol": symbol},
                     )
-            elif order.side == OrderSide.BUY and order.price is None:
+            elif order.side in (OrderSide.BUY, OrderSide.SELL) and order.price is None:
                 logger.warning(
                     "Skip position creation: executed_price is None (no fallback)",
                     extra={"run_id": run_id, "symbol": symbol},
@@ -281,6 +293,9 @@ class TradingEngine:
         """
         result = self._exit_manager.check_exit(pos, snapshot)
         if result is None:
+            return
+        if self._exchange.manages_exit_orders:
+            # 거래소 보호주문이 청산을 처리하므로 로컬 청산 주문은 제출하지 않는다.
             return
 
         intent = result.intent

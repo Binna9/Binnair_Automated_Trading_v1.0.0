@@ -71,6 +71,9 @@ class OrderRequestDTO:
     order_type: str
     quantity: float
     price: float | None
+    stop_price: float | None
+    reduce_only: bool
+    position_side: str
     correlation_id: str
     paper_mode: bool
     requested_at: datetime
@@ -91,6 +94,9 @@ class OrderExecutionDTO:
     status: str
     executed_price: float | None
     executed_qty: float
+    stop_price: float | None
+    reduce_only: bool
+    position_side: str
     raw_response: dict[str, Any] | None
     paper_mode: bool
     executed_at: datetime
@@ -216,6 +222,9 @@ class OrderRequestCreate:
     order_type: str
     quantity: float
     price: float | None
+    stop_price: float | None
+    reduce_only: bool
+    position_side: str
     correlation_id: str
     paper_mode: bool
     requested_at: datetime
@@ -233,6 +242,9 @@ class OrderExecutionCreate:
     status: str
     executed_price: float | None
     executed_qty: float
+    stop_price: float | None
+    reduce_only: bool
+    position_side: str
     raw_response: dict[str, Any] | None
     paper_mode: bool
     executed_at: datetime

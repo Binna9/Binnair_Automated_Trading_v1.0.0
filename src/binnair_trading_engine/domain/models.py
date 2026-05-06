@@ -14,6 +14,8 @@ class OrderSide(str, Enum):
 class OrderType(str, Enum):
     MARKET = "MARKET"
     LIMIT = "LIMIT"
+    STOP_MARKET = "STOP_MARKET"
+    TAKE_PROFIT_MARKET = "TAKE_PROFIT_MARKET"
 
 
 class OrderStatus(str, Enum):
@@ -55,12 +57,16 @@ class Order:
     order_type: OrderType
     quantity: float
     price: float | None = None
+    stop_price: float | None = None
     status: OrderStatus = OrderStatus.PENDING
     order_id: str | None = None
     client_order_id: str | None = None
     signal_id: str | None = None
     run_id: str = ""
     correlation_id: str = ""
+    reduce_only: bool = False
+    close_position: bool = False
+    position_side: str = "BOTH"  # BOTH | LONG | SHORT (Binance Futures)
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -70,14 +76,14 @@ class Position:
     """
     포지션 도메인 모델.
     엔진이 참조하는 현재 보유 상태의 기준 객체.
-    초기 버전: single symbol / single position / long only.
+    초기 버전: single symbol / single position.
     수량 0이면 CLOSED.
     """
 
     symbol: str
     quantity: float
     avg_entry_price: float
-    side: str = "LONG"  # LONG | SHORT. 초기 버전은 LONG만 지원
+    side: str = "LONG"  # LONG | SHORT
     tp_price: float | None = None
     sl_price: float | None = None
     status: str = "OPEN"  # OPEN | CLOSED
@@ -130,6 +136,12 @@ class OrderIntent:
     order_type: OrderType
     quantity: float
     price: float | None = None
+    take_profit_price: float | None = None
+    stop_loss_price: float | None = None
+    time_in_force: str = "GTC"
+    reduce_only: bool = False
+    position_side: str = "BOTH"  # BOTH | LONG | SHORT
+    leverage: int | None = None
 
 
 @dataclass

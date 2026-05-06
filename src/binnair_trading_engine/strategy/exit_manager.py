@@ -42,6 +42,7 @@ class ExitManager:
         """
         포지션 + 현재가 기준 TP/SL 도달 여부 판단.
         LONG: price >= tp_price → TAKE_PROFIT, price <= sl_price → STOP_LOSS.
+        SHORT: price <= tp_price → TAKE_PROFIT, price >= sl_price → STOP_LOSS.
         도달 시 청산 OrderIntent 생성. 아니면 None.
         """
         price = snapshot.price
@@ -50,9 +51,14 @@ class ExitManager:
         if not position.is_open():
             return None
 
-        # LONG 기준
-        tp_hit = position.tp_price is not None and price >= position.tp_price
-        sl_hit = position.sl_price is not None and price <= position.sl_price
+        if position.side == "SHORT":
+            tp_hit = position.tp_price is not None and price <= position.tp_price
+            sl_hit = position.sl_price is not None and price >= position.sl_price
+            close_side = OrderSide.BUY
+        else:
+            tp_hit = position.tp_price is not None and price >= position.tp_price
+            sl_hit = position.sl_price is not None and price <= position.sl_price
+            close_side = OrderSide.SELL
 
         if tp_hit:
             reason = EXIT_TAKE_PROFIT
@@ -63,9 +69,11 @@ class ExitManager:
 
         intent = OrderIntent(
             symbol=symbol,
-            side=OrderSide.SELL,
+            side=close_side,
             order_type=OrderType.MARKET,
             quantity=position.quantity,
             price=None,
+            reduce_only=True,
+            position_side="SHORT" if position.side == "SHORT" else "LONG",
         )
         return ExitIntent(intent=intent, reason=reason)

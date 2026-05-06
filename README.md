@@ -199,7 +199,12 @@ market_data:
   poll_interval_seconds: 5.0
 
 exchange:
+  market_type: "futures"   # "spot" | "futures"
   paper_mode: true
+  leverage: 3
+  margin_type: "ISOLATED"  # ISOLATED | CROSSED
+  position_side_mode: "ONE_WAY"  # ONE_WAY | HEDGE
+  oco_enabled: true
 
 storage:
   backend: "postgres"   # "memory" | "postgres"

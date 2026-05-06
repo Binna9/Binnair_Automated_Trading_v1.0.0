@@ -9,4 +9,7 @@ __all__ = ["Strategy", "PassthroughStrategy", "ExitManager", "create_strategy"]
 
 def create_strategy(config) -> Strategy:
     """설정에 따라 Strategy 생성."""
-    return PassthroughStrategy()
+    rules = getattr(config, "trade_rules", None)
+    if rules is None:
+        return PassthroughStrategy()
+    return PassthroughStrategy(tp_pct=rules.tp_pct, sl_pct=rules.sl_pct)

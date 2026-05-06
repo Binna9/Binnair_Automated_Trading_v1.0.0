@@ -47,6 +47,7 @@ def init_db(drop_existing: bool = False, config_path: Path | str | None = None) 
 
     # 모든 이력 테이블에 user_id 추가 (사용자별 이력 분리)
     _migrate_user_id(engine, schema)
+    _migrate_futures_order_columns(engine, schema)
 
     print("Done.")
 
@@ -107,6 +108,21 @@ def _migrate_user_id(engine, schema: str) -> None:
             )
         conn.commit()
     print("user_id migration applied.")
+
+
+def _migrate_futures_order_columns(engine, schema: str) -> None:
+    """futures/OCO 추적용 order_request/order_execution 컬럼 추가."""
+    order_request_table = f'"{schema}"."order_request"'
+    order_execution_table = f'"{schema}"."order_execution"'
+    with engine.connect() as conn:
+        conn.execute(text(f"ALTER TABLE {order_request_table} ADD COLUMN IF NOT EXISTS stop_price DOUBLE PRECISION"))
+        conn.execute(text(f"ALTER TABLE {order_request_table} ADD COLUMN IF NOT EXISTS reduce_only BOOLEAN DEFAULT FALSE"))
+        conn.execute(text(f"ALTER TABLE {order_request_table} ADD COLUMN IF NOT EXISTS position_side VARCHAR(16) DEFAULT 'BOTH'"))
+        conn.execute(text(f"ALTER TABLE {order_execution_table} ADD COLUMN IF NOT EXISTS stop_price DOUBLE PRECISION"))
+        conn.execute(text(f"ALTER TABLE {order_execution_table} ADD COLUMN IF NOT EXISTS reduce_only BOOLEAN DEFAULT FALSE"))
+        conn.execute(text(f"ALTER TABLE {order_execution_table} ADD COLUMN IF NOT EXISTS position_side VARCHAR(16) DEFAULT 'BOTH'"))
+        conn.commit()
+    print("futures order columns migration applied.")
 
 
 def _default_config_path() -> Path | None:

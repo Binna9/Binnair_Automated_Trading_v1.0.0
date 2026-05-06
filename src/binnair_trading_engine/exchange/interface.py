@@ -12,6 +12,14 @@ if TYPE_CHECKING:
 class ExchangeAdapter(ABC):
     """거래소 연동용 어댑터 인터페이스 (Binance 기준 설계)."""
 
+    @property
+    def manages_exit_orders(self) -> bool:
+        """
+        거래소가 TP/SL 보호주문(OCO 유사)을 직접 관리하는지 여부.
+        True면 엔진의 로컬 ExitManager 청산을 비활성화할 수 있다.
+        """
+        return False
+
     def submit_order(
         self, intent: "OrderIntent", execution_price: float | None = None
     ) -> Order | None:
@@ -23,6 +31,9 @@ class ExchangeAdapter(ABC):
             order_type=intent.order_type,
             quantity=intent.quantity,
             price=price,
+            stop_price=None,
+            reduce_only=intent.reduce_only,
+            position_side=intent.position_side,
         )
         return self.place_order(order)
 
@@ -55,3 +66,17 @@ class ExchangeAdapter(ABC):
     def get_recent_trades(self, symbol: str, limit: int = 10) -> list[Trade]:
         """최근 체결 내역 조회."""
         ...
+
+    def place_exit_orders(
+        self,
+        symbol: str,
+        position_side: str,
+        quantity: float,
+        take_profit_price: float | None,
+        stop_loss_price: float | None,
+    ) -> list[Order]:
+        """
+        진입 직후 보호성 청산 주문(TP/SL) 등록.
+        기본 구현은 미지원([] 반환).
+        """
+        return []
