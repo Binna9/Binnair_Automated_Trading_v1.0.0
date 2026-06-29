@@ -4,7 +4,6 @@ Persistence 추상화. 구현체는 infra 레이어에서 주입.
 """
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from typing import Protocol
 
 from binnair_trading_engine.infra.persistence.dto import (
@@ -12,6 +11,7 @@ from binnair_trading_engine.infra.persistence.dto import (
     EngineRunCreate,
     EngineRunStatus,
     ModelInferenceEventCreate,
+    OhlcvCandleCreate,
     OrderExecutionCreate,
     OrderRequestCreate,
     PositionSnapshotCreate,
@@ -19,6 +19,18 @@ from binnair_trading_engine.infra.persistence.dto import (
     SignalEventCreate,
     StrategyConfigSnapshotCreate,
 )
+
+
+class OhlcvCandleRepository(Protocol):
+    """ohlcv_candle 저장소 인터페이스."""
+
+    def upsert_many(self, candles: list[OhlcvCandleCreate]) -> int: ...
+    def get_recent_closes(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[float]: ...
 
 
 class EngineRunRepository(Protocol):

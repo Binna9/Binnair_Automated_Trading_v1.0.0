@@ -9,6 +9,7 @@ from binnair_trading_engine.config import load_config
 from binnair_trading_engine.engine import TradingEngine
 from binnair_trading_engine.domain.models import EngineContext
 from binnair_trading_engine.exchange import create_exchange
+from binnair_trading_engine.market_data import create_price_history_provider
 from binnair_trading_engine.position import PositionManager
 from binnair_trading_engine.predictor import create_predictor
 from binnair_trading_engine.risk import create_risk_checker
@@ -37,7 +38,8 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
     )
 
     exchange = create_exchange(config)
-    predictor = create_predictor(config)
+    price_history_provider = create_price_history_provider(config)
+    predictor = create_predictor(config, price_history_provider=price_history_provider)
     risk = create_risk_checker(config)
     storage = create_storage(config)
     state_manager = create_state_manager(config)

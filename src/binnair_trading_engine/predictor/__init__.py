@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-def create_predictor(config) -> Predictor:
+def create_predictor(config, price_history_provider=None) -> Predictor:
     """설정에 따라 Predictor 생성 (rule_based, torch, timesfm 지원)."""
     from binnair_trading_engine.config.settings import EngineConfig
     from binnair_trading_engine.predictor.artifact import ModelArtifactMetadata
@@ -35,7 +35,8 @@ def create_predictor(config) -> Predictor:
         from binnair_trading_engine.config.settings import PredictorTimesFMConfig
 
         return TimesFMPredictor(
-            config=cfg.predictor_timesfm_config or PredictorTimesFMConfig()
+            config=cfg.predictor_timesfm_config or PredictorTimesFMConfig(),
+            price_history_provider=price_history_provider,
         )
     if cfg.predictor_type == "torch" and cfg.predictor_config:
         artifact = ModelArtifactMetadata(
@@ -55,5 +56,6 @@ def create_predictor(config) -> Predictor:
         cfg.predictor_type,
     )
     return TimesFMPredictor(
-        config=cfg.predictor_timesfm_config or PredictorTimesFMConfig()
+        config=cfg.predictor_timesfm_config or PredictorTimesFMConfig(),
+        price_history_provider=price_history_provider,
     )

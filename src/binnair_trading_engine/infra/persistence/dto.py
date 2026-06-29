@@ -309,3 +309,18 @@ class AuditLogCreate:
     paper_mode: bool
     correlation_id: str = ""
     user_id: str = "default"
+
+
+@dataclass
+class OhlcvCandleCreate:
+    symbol: str
+    timeframe: str
+    open_time: datetime
+    close_time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    quote_volume: float | None = None
+    trade_count: int | None = None

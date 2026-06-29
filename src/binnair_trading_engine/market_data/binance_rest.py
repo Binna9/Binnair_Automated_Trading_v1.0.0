@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from binnair_trading_engine.domain.models import MarketSnapshot
+from binnair_trading_engine.domain.models import MarketSnapshot, OhlcvCandle
 
 logger = logging.getLogger(__name__)
 
@@ -52,3 +52,52 @@ class BinanceRestMarketData:
         except (ValueError, TypeError) as e:
             logger.warning("Binance ticker parse error: %s", e)
             return None
+
+    def fetch_klines(
+        self,
+        symbol: str,
+        interval: str = "1m",
+        limit: int = 500,
+    ) -> list[OhlcvCandle]:
+        """Binance Spot REST API에서 OHLCV 캔들을 조회한다."""
+        try:
+            resp = httpx.get(
+                f"{self._base_url}/api/v3/klines",
+                params={
+                    "symbol": symbol,
+                    "interval": interval,
+                    "limit": limit,
+                },
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            return [
+                self._parse_kline(symbol=symbol, interval=interval, row=row)
+                for row in resp.json()
+            ]
+        except httpx.HTTPError as e:
+            logger.warning("Binance kline fetch failed: %s", e)
+            return []
+        except (ValueError, TypeError, IndexError) as e:
+            logger.warning("Binance kline parse error: %s", e)
+            return []
+
+    def _parse_kline(
+        self,
+        symbol: str,
+        interval: str,
+        row: list,
+    ) -> OhlcvCandle:
+        return OhlcvCandle(
+            symbol=symbol,
+            timeframe=interval,
+            open_time=datetime.fromtimestamp(row[0] / 1000, tz=timezone.utc),
+            close_time=datetime.fromtimestamp(row[6] / 1000, tz=timezone.utc),
+            open=float(row[1]),
+            high=float(row[2]),
+            low=float(row[3]),
+            close=float(row[4]),
+            volume=float(row[5]),
+            quote_volume=float(row[7]) if row[7] is not None else None,
+            trade_count=int(row[8]) if row[8] is not None else None,
+        )

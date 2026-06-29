@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import bindparam, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from binnair_trading_engine.infra.persistence.dto import (
@@ -17,6 +18,7 @@ from binnair_trading_engine.infra.persistence.dto import (
     EngineRunCreate,
     EngineRunStatus,
     ModelInferenceEventCreate,
+    OhlcvCandleCreate,
     OrderExecutionCreate,
     OrderRequestCreate,
     PositionSnapshotCreate,
@@ -28,6 +30,7 @@ from binnair_trading_engine.infra.persistence.models import (
     AuditLogModel,
     EngineRunModel,
     ModelInferenceEventModel,
+    OhlcvCandleModel,
     OrderExecutionModel,
     OrderRequestModel,
     PositionSnapshotModel,
@@ -76,6 +79,83 @@ class _BasePostgresRepository:
 
     def _session(self) -> Session:
         return _get_session_factory()()
+
+
+class OhlcvCandlePostgresRepository(_BasePostgresRepository):
+    """ohlcv_candle 테이블 repository."""
+
+    def upsert_many(self, candles: list[OhlcvCandleCreate]) -> int:
+        if not candles:
+            return 0
+
+        rows = [
+            {
+                "symbol": c.symbol,
+                "timeframe": c.timeframe,
+                "open_time": _ensure_utc(c.open_time),
+                "close_time": _ensure_utc(c.close_time),
+                "open": c.open,
+                "high": c.high,
+                "low": c.low,
+                "close": c.close,
+                "volume": c.volume,
+                "quote_volume": c.quote_volume,
+                "trade_count": c.trade_count,
+            }
+            for c in candles
+        ]
+
+        session = self._session()
+        try:
+            stmt = insert(OhlcvCandleModel).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["symbol", "timeframe", "open_time"],
+                set_={
+                    "close_time": stmt.excluded.close_time,
+                    "open": stmt.excluded.open,
+                    "high": stmt.excluded.high,
+                    "low": stmt.excluded.low,
+                    "close": stmt.excluded.close,
+                    "volume": stmt.excluded.volume,
+                    "quote_volume": stmt.excluded.quote_volume,
+                    "trade_count": stmt.excluded.trade_count,
+                },
+            )
+            result = session.execute(stmt)
+            session.commit()
+            rowcount = result.rowcount
+            return int(rowcount) if rowcount is not None and rowcount >= 0 else len(rows)
+        except Exception as e:
+            session.rollback()
+            logger.exception("OhlcvCandle upsert_many failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+    def get_recent_closes(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[float]:
+        if limit <= 0:
+            return []
+
+        session = self._session()
+        try:
+            stmt = (
+                select(OhlcvCandleModel.close)
+                .where(
+                    OhlcvCandleModel.symbol == symbol,
+                    OhlcvCandleModel.timeframe == timeframe,
+                )
+                .order_by(OhlcvCandleModel.open_time.desc())
+                .limit(limit)
+            )
+            rows = session.execute(stmt).scalars().all()
+            return [float(v) for v in reversed(rows)]
+        finally:
+            session.close()
 
 
 class EngineRunPostgresRepository(_BasePostgresRepository):
@@ -512,6 +592,7 @@ class PostgresRepositoryFactory:
     """Postgres repository 팩토리."""
 
     def __init__(self) -> None:
+        self._ohlcv_candle = OhlcvCandlePostgresRepository()
         self._engine_run = EngineRunPostgresRepository()
         self._strategy_config = StrategyConfigSnapshotPostgresRepository()
         self._signal_event = SignalEventPostgresRepository()
@@ -521,6 +602,10 @@ class PostgresRepositoryFactory:
         self._risk_event = RiskEventPostgresRepository()
         self._model_inference = ModelInferenceEventPostgresRepository()
         self._audit_log = AuditLogPostgresRepository()
+
+    @property
+    def ohlcv_candle(self) -> OhlcvCandlePostgresRepository:
+        return self._ohlcv_candle
 
     @property
     def engine_run(self) -> EngineRunPostgresRepository:

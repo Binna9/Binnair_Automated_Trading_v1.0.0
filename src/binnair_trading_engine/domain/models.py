@@ -229,3 +229,20 @@ class MarketSnapshot:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     run_id: str = ""
     correlation_id: str = ""
+
+
+@dataclass
+class OhlcvCandle:
+    """거래소 OHLCV 캔들 데이터."""
+
+    symbol: str
+    timeframe: str
+    open_time: datetime
+    close_time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    quote_volume: float | None = None
+    trade_count: int | None = None

@@ -95,6 +95,8 @@ class PredictorTimesFMConfig:
     min_context: int = 64
     horizon: int = 3
     forecast_index: int = -1
+    use_ohlcv_history: bool = True
+    timeframe: str = "1m"
     fee_rate: float = 0.0004
     slippage_rate: float = 0.0005
     safety_margin: float = 0.001
@@ -194,6 +196,8 @@ class EngineConfig:
             min_context=int(tfm.get("min_context", PredictorTimesFMConfig.min_context)),
             horizon=int(tfm.get("horizon", PredictorTimesFMConfig.horizon)),
             forecast_index=int(tfm.get("forecast_index", PredictorTimesFMConfig.forecast_index)),
+            use_ohlcv_history=bool(tfm.get("use_ohlcv_history", PredictorTimesFMConfig.use_ohlcv_history)),
+            timeframe=tfm.get("timeframe", PredictorTimesFMConfig.timeframe),
             fee_rate=float(tfm.get("fee_rate", PredictorTimesFMConfig.fee_rate)),
             slippage_rate=float(tfm.get("slippage_rate", PredictorTimesFMConfig.slippage_rate)),
             safety_margin=float(tfm.get("safety_margin", PredictorTimesFMConfig.safety_margin)),

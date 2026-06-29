@@ -12,6 +12,7 @@
 
 | 테이블 | 역할 |
 |--------|------|
+| **ohlcv_candle** | Binance 등 거래소 OHLCV 원천 캔들. TimesFM 입력 close 히스토리와 백테스트/리플레이 기반 |
 | **engine_run** | 엔진 실행 단위 (BinnAIR pipeline_runs 유사). run_id, strategy_id, model_version, paper_mode, status, started_at/stopped_at |
 | **strategy_config_snapshot** | 실행 시점 전략 설정 스냅샷. replay/debug용 |
 | **signal_event** | Predictor/Strategy 출력 시그널 (BUY/SELL/HOLD). symbol, model_version, timeframe |
@@ -28,6 +29,17 @@
 
 - config `run_context.user_id` (기본값 `"default"`)
 - Web 로그인 시 사용자 UUID 전달 예정
+
+## OHLCV 캔들 저장
+
+`ohlcv_candle`은 외부 거래소에서 받은 캔들 원천 데이터를 저장한다.
+
+- 고유키: `symbol`, `timeframe`, `open_time`
+- 적재 방식: `INSERT ... ON CONFLICT DO UPDATE`
+- 기본 사용처: TimesFM 입력용 최근 `close` 시계열
+- 보조 사용처: 백테스트, 리플레이, 신호 디버깅
+
+같은 캔들을 반복 적재해도 중복 row는 생기지 않는다. 상시 적재는 최근 N개 캔들을 반복 조회해 작은 공백을 upsert로 메우는 방식이 권장된다.
 
 ## 추적 필드 (replay/debug)
 

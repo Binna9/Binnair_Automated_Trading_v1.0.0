@@ -49,7 +49,7 @@ pip install -e .
 
 ```bash
 # 1. venv 생성 (Python 3.12)
-python -m venv .venv
+python3.12 -m venv .venv
 
 # 2. venv 활성화
 # Linux/macOS
@@ -98,11 +98,13 @@ src/binnair_trading_engine/
 │           └── postgres.py    # Postgres 구현체
 ├── market_data/            # 시세 수신
 │   ├── interface.py       # MarketDataProvider
-│   └── binance_rest.py    # Binance REST ticker/price 폴링
+│   ├── history.py         # PriceHistoryProvider, OHLCV DB close 히스토리 공급
+│   └── binance_rest.py    # Binance REST ticker/price 및 klines 조회
 ├── predictor/              # 추론/모델
 │   ├── interface.py       # Predictor
 │   ├── dummy.py           # DummyPredictor (테스트용)
 │   ├── rule_based.py      # RuleBasedPredictor (가격 규칙)
+│   ├── timesfm_predictor.py # TimesFM 기반 zero-shot 예측
 │   ├── torch_predictor.py # TorchPredictor (PyTorch)
 │   ├── artifact.py        # ModelArtifactMetadata
 │   └── feature_provider.py # FeatureVectorProvider
@@ -125,6 +127,7 @@ src/binnair_trading_engine/
 
 scripts/
 ├── init_db.py             # DB 테이블 생성 및 position_snapshot migration
+├── ingest_ohlcv.py        # Binance OHLCV 캔들 적재 (TimesFM 입력 히스토리)
 └── verify_mvp.py          # MVP 검증 (진입→TP/SL 청산, DB 기록 검증)
 
 config/
@@ -142,9 +145,9 @@ config/
 | **domain** | Signal, Order, Position, Trade, Prediction, MarketSnapshot 등 엔진 내부 사용 객체 |
 | **engine** | TradingEngine: process_tick(시세→진입/청산), 포지션 우선 분기, DB 복구 |
 | **exchange** | ExchangeAdapter. PaperExchangeAdapter / BinanceSpotAdapter |
-| **infra** | DB 모델, DTO, Repository. Postgres 연결 및 position_snapshot 등 테이블 CRUD |
-| **market_data** | MarketDataProvider. Binance REST 시세 폴링 |
-| **predictor** | Predictor. DummyPredictor, RuleBasedPredictor, TorchPredictor |
+| **infra** | DB 모델, DTO, Repository. Postgres 연결 및 OHLCV/position_snapshot 등 테이블 CRUD |
+| **market_data** | MarketDataProvider, PriceHistoryProvider. Binance REST 시세/OHLCV 조회 |
+| **predictor** | Predictor. TimesFM, DummyPredictor, RuleBasedPredictor, TorchPredictor |
 | **position** | PositionManager: open/close, 미실현 PnL, DB 스냅샷 복구 |
 | **risk** | RiskChecker: check(intent, ctx) → passed/rejected |
 | **storage** | Order/Signal/Position/Trade/Audit 저장. PostgresDbStorage (backend=postgres) |
@@ -170,6 +173,25 @@ python scripts/init_db.py --drop
 ```bash
 CONFIG_PATH=config/config.yaml python scripts/verify_mvp.py
 ```
+
+### OHLCV 캔들 적재 (TimesFM 입력 히스토리)
+
+```bash
+# 최근 1분봉 500개를 DB ohlcv_candle에 upsert
+CONFIG_PATH=config/config.yaml python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 500
+
+# 계속 적재 (스케줄러/상시 프로세스용)
+CONFIG_PATH=config/config.yaml python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 30 --loop --poll-interval 60
+```
+
+TimesFM 사용 시 권장 흐름:
+
+```text
+Binance klines → ohlcv_candle upsert → PriceHistoryProvider → TimesFMPredictor
+```
+
+`TimesFMPredictor`는 DB를 직접 알지 않고 `PriceHistoryProvider`로 최근 close 시계열을 받는다.
+DB 히스토리가 `min_context`보다 부족하면 엔진 tick으로 쌓은 in-memory 가격 히스토리로 fallback한다.
 
 ### CLI (설치 후)
 
@@ -219,8 +241,16 @@ trade_rules:
   tp_pct: 0.02   # TP: 체결가 * (1 + tp_pct)
   sl_pct: 0.01   # SL: 체결가 * (1 - sl_pct)
 
-predictor_type: "dummy"   # "dummy" | "rule_based" | "torch"
+predictor_type: "timesfm"   # "dummy" | "rule_based" | "torch" | "timesfm"
 risk_enabled: true
+
+predictor_config:
+  timesfm:
+    use_ohlcv_history: true
+    timeframe: "1m"
+    context_length: 128
+    min_context: 64
+    horizon: 3
 state_persist_path: "./data/state"
 ```
 

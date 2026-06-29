@@ -19,6 +19,7 @@ from binnair_trading_engine.domain.models import (
     SignalAction,
     TradeContext,
 )
+from binnair_trading_engine.market_data import PriceHistoryProvider
 from binnair_trading_engine.predictor.interface import Predictor
 
 logger = logging.getLogger(__name__)
@@ -32,10 +33,16 @@ class TimesFMPredictor(Predictor):
     음수 방향으로 threshold보다 작으면 SELL, 나머지는 HOLD로 판단한다.
     """
 
-    def __init__(self, config: PredictorTimesFMConfig) -> None:
+    def __init__(
+        self,
+        config: PredictorTimesFMConfig,
+        price_history_provider: PriceHistoryProvider | None = None,
+    ) -> None:
         self._config = config
         self._price_history: deque[float] = deque(maxlen=config.context_length)
         self._model: Any = None
+        self._price_history_provider = price_history_provider
+        self._price_history_provider_failed = False
         self._threshold = (
             config.fee_rate * 2.0
             + config.slippage_rate
@@ -80,15 +87,16 @@ class TimesFMPredictor(Predictor):
     ) -> Prediction | None:
         self._price_history.append(float(snapshot.price))
 
-        if self._model is None or len(self._price_history) < self._config.min_context:
+        history = self._get_price_history(snapshot)
+        if self._model is None or len(history) < self._config.min_context:
             return self._hold(snapshot)
 
         try:
             current_price = float(snapshot.price)
-            history = np.asarray(self._price_history, dtype=np.float32)
+            history_arr = np.asarray(history, dtype=np.float32)
             point_forecast, _ = self._model.forecast(
                 horizon=self._config.horizon,
-                inputs=[history],
+                inputs=[history_arr],
             )
             predicted_price = self._select_forecast_price(point_forecast)
             expected_return = (predicted_price - current_price) / current_price
@@ -109,6 +117,36 @@ class TimesFMPredictor(Predictor):
         except Exception as e:
             logger.exception("TimesFM inference failed: %s", e)
             return self._hold(snapshot)
+
+    def _get_price_history(self, snapshot: MarketSnapshot) -> list[float]:
+        if not self._config.use_ohlcv_history or self._price_history_provider is None:
+            return list(self._price_history)
+
+        closes = self._get_external_history(snapshot.symbol)
+        if len(closes) >= self._config.min_context:
+            current_price = float(snapshot.price)
+            if not closes or closes[-1] != current_price:
+                closes.append(current_price)
+            return closes[-self._config.context_length:]
+
+        return list(self._price_history)
+
+    def _get_external_history(self, symbol: str) -> list[float]:
+        if self._price_history_provider_failed or self._price_history_provider is None:
+            return []
+        try:
+            return self._price_history_provider.get_recent_prices(
+                symbol=symbol,
+                timeframe=self._config.timeframe,
+                limit=self._config.context_length,
+            )
+        except Exception as e:
+            self._price_history_provider_failed = True
+            logger.warning(
+                "Price history load failed, using in-memory tick history: %s",
+                e,
+            )
+            return []
 
     def _select_forecast_price(self, point_forecast: Any) -> float:
         forecast = np.asarray(point_forecast, dtype=np.float64)

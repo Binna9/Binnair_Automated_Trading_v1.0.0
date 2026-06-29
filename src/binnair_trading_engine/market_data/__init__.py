@@ -1,12 +1,20 @@
 """시세 수신 모듈."""
 
 from binnair_trading_engine.market_data.binance_rest import BinanceRestMarketData
+from binnair_trading_engine.market_data.history import (
+    OhlcvDbPriceHistoryProvider,
+    PriceHistoryProvider,
+    create_price_history_provider,
+)
 from binnair_trading_engine.market_data.interface import MarketDataProvider
 
 __all__ = [
     "MarketDataProvider",
     "BinanceRestMarketData",
+    "PriceHistoryProvider",
+    "OhlcvDbPriceHistoryProvider",
     "create_market_data_provider",
+    "create_price_history_provider",
 ]
 
 
