@@ -1,0 +1,166 @@
+"""
+TimesFM 기반 예측기.
+
+현재 엔진은 tick 단위 MarketSnapshot만 전달하므로, Predictor 내부에서
+최근 가격 히스토리를 누적한 뒤 사전학습 TimesFM 모델로 미래 가격을 예측한다.
+"""
+from __future__ import annotations
+
+import logging
+from collections import deque
+from typing import Any
+
+import numpy as np
+
+from binnair_trading_engine.config.settings import PredictorTimesFMConfig
+from binnair_trading_engine.domain.models import (
+    MarketSnapshot,
+    Prediction,
+    SignalAction,
+    TradeContext,
+)
+from binnair_trading_engine.predictor.interface import Predictor
+
+logger = logging.getLogger(__name__)
+
+
+class TimesFMPredictor(Predictor):
+    """
+    TimesFM zero-shot forecast 결과를 BUY/SELL/HOLD 신호로 변환한다.
+
+    expected_return이 거래 비용과 안전마진을 합친 threshold보다 크면 BUY,
+    음수 방향으로 threshold보다 작으면 SELL, 나머지는 HOLD로 판단한다.
+    """
+
+    def __init__(self, config: PredictorTimesFMConfig) -> None:
+        self._config = config
+        self._price_history: deque[float] = deque(maxlen=config.context_length)
+        self._model: Any = None
+        self._threshold = (
+            config.fee_rate * 2.0
+            + config.slippage_rate
+            + config.safety_margin
+        )
+        self._load_model()
+
+    def _load_model(self) -> None:
+        """TimesFM 사전학습 모델을 로드하고 추론 설정을 컴파일한다."""
+        try:
+            import timesfm
+
+            if self._config.model_id != "google/timesfm-2.5-200m-pytorch":
+                raise ValueError(
+                    "현재 TimesFMPredictor는 "
+                    "google/timesfm-2.5-200m-pytorch 로더만 지원합니다."
+                )
+
+            model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+                self._config.model_id
+            )
+            model.compile(
+                timesfm.ForecastConfig(
+                    max_context=self._config.context_length,
+                    max_horizon=self._config.horizon,
+                    normalize_inputs=True,
+                    use_continuous_quantile_head=True,
+                    force_flip_invariance=True,
+                    infer_is_positive=True,
+                    fix_quantile_crossing=True,
+                )
+            )
+            self._model = model
+        except Exception as e:
+            logger.warning("TimesFM model load failed, using HOLD fallback: %s", e)
+            self._model = None
+
+    def predict(
+        self,
+        snapshot: MarketSnapshot,
+        ctx: TradeContext,
+    ) -> Prediction | None:
+        self._price_history.append(float(snapshot.price))
+
+        if self._model is None or len(self._price_history) < self._config.min_context:
+            return self._hold(snapshot)
+
+        try:
+            current_price = float(snapshot.price)
+            history = np.asarray(self._price_history, dtype=np.float32)
+            point_forecast, _ = self._model.forecast(
+                horizon=self._config.horizon,
+                inputs=[history],
+            )
+            predicted_price = self._select_forecast_price(point_forecast)
+            expected_return = (predicted_price - current_price) / current_price
+            action = self._to_action(expected_return)
+            confidence = self._to_confidence(expected_return)
+
+            return Prediction(
+                action=action,
+                confidence=confidence,
+                price_hint=current_price,
+                score=expected_return,
+                probability=self._to_probability(action, confidence),
+                model_version=self._config.model_version or ctx.model_version,
+                feature_set_version=(
+                    self._config.feature_set_version or ctx.feature_set_version
+                ),
+            )
+        except Exception as e:
+            logger.exception("TimesFM inference failed: %s", e)
+            return self._hold(snapshot)
+
+    def _select_forecast_price(self, point_forecast: Any) -> float:
+        forecast = np.asarray(point_forecast, dtype=np.float64)
+        row = forecast[0]
+        idx = self._config.forecast_index
+        if idx < 0:
+            idx = len(row) + idx
+        idx = max(0, min(idx, len(row) - 1))
+        return float(row[idx])
+
+    def _to_action(self, expected_return: float) -> SignalAction:
+        if expected_return > self._threshold:
+            return SignalAction.BUY
+        if expected_return < -self._threshold:
+            return SignalAction.SELL
+        return SignalAction.HOLD
+
+    def _to_confidence(self, expected_return: float) -> float:
+        if self._threshold <= 0:
+            return 0.0
+        return min(1.0, abs(expected_return) / self._threshold)
+
+    def _to_probability(
+        self,
+        action: SignalAction,
+        confidence: float,
+    ) -> dict[str, float]:
+        hold_probability = max(0.0, 1.0 - confidence)
+        side_probability = confidence
+        return {
+            SignalAction.BUY.value: side_probability
+            if action == SignalAction.BUY
+            else 0.0,
+            SignalAction.SELL.value: side_probability
+            if action == SignalAction.SELL
+            else 0.0,
+            SignalAction.HOLD.value: 1.0
+            if action == SignalAction.HOLD
+            else hold_probability,
+        }
+
+    def _hold(self, snapshot: MarketSnapshot) -> Prediction:
+        return Prediction(
+            action=SignalAction.HOLD,
+            confidence=0.0,
+            price_hint=snapshot.price,
+            score=0.0,
+            probability={
+                SignalAction.BUY.value: 0.0,
+                SignalAction.SELL.value: 0.0,
+                SignalAction.HOLD.value: 1.0,
+            },
+            model_version=self._config.model_version,
+            feature_set_version=self._config.feature_set_version,
+        )

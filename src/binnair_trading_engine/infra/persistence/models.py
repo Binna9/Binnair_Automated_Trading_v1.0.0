@@ -7,7 +7,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, MetaData, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -19,6 +30,41 @@ class Base(DeclarativeBase):
     """SQLAlchemy declarative base."""
 
     metadata = metadata
+
+
+# ---------------------------------------------------------------------------
+# ohlcv_candle
+# ---------------------------------------------------------------------------
+class OhlcvCandleModel(Base):
+    """
+    OHLCV 캔들 원천 데이터.
+
+    Binance 등 거래소 API에서 받은 1분봉/5분봉 캔들을 저장한다.
+    TimesFM 입력은 우선 close 시계열을 사용하지만, 이후 거래량/고가/저가 기반
+    필터나 백테스트 검증을 위해 OHLCV 전체를 보존한다.
+    """
+
+    __tablename__ = "ohlcv_candle"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="거래 심볼. 예: BTCUSDT")
+    timeframe: Mapped[str] = mapped_column(String(16), index=True, comment="캔들 주기. 예: 1m, 5m")
+    open_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, comment="캔들 시작 시각")
+    close_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="캔들 종료 시각")
+    open: Mapped[float] = mapped_column(Float, comment="시가")
+    high: Mapped[float] = mapped_column(Float, comment="고가")
+    low: Mapped[float] = mapped_column(Float, comment="저가")
+    close: Mapped[float] = mapped_column(Float, comment="종가. TimesFM 기본 입력 후보")
+    volume: Mapped[float] = mapped_column(Float, comment="기준 자산 거래량")
+    quote_volume: Mapped[float | None] = mapped_column(Float, nullable=True, comment="호가/견적 자산 거래대금")
+    trade_count: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="해당 캔들 내 체결 수")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = (
+        # 같은 거래소 캔들을 반복 적재해도 중복 row가 생기지 않도록 캔들 고유키를 둔다.
+        UniqueConstraint("symbol", "timeframe", "open_time", name="uq_ohlcv_candle_symbol_timeframe_open_time"),
+        Index("ix_ohlcv_candle_symbol_timeframe_open_time", "symbol", "timeframe", "open_time"),
+    )
 
 
 # ---------------------------------------------------------------------------

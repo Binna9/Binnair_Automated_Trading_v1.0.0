@@ -41,11 +41,15 @@ class PassthroughStrategy(Strategy):
         sl_price: float | None = None
         if entry_price is not None:
             if side == OrderSide.BUY:
-                tp_price = entry_price * (1.0 + self._tp_pct)
-                sl_price = entry_price * (1.0 - self._sl_pct)
+                if self._tp_pct > 0:
+                    tp_price = entry_price * (1.0 + self._tp_pct)
+                if self._sl_pct > 0:
+                    sl_price = entry_price * (1.0 - self._sl_pct)
             else:
-                tp_price = entry_price * (1.0 - self._tp_pct)
-                sl_price = entry_price * (1.0 + self._sl_pct)
+                if self._tp_pct > 0:
+                    tp_price = entry_price * (1.0 - self._tp_pct)
+                if self._sl_pct > 0:
+                    sl_price = entry_price * (1.0 + self._sl_pct)
 
         return OrderIntent(
             symbol=signal.symbol,

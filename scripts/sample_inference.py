@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-샘플 추론 플로우: DummyPredictor, RuleBasedPredictor, TorchPredictor 각각으로 inference 실행.
+샘플 추론 플로우: RuleBasedPredictor, TorchPredictor, TimesFMPredictor 각각으로 inference 실행.
 """
 from __future__ import annotations
 
@@ -15,16 +15,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from binnair_trading_engine.domain.models import (
     EngineContext,
     MarketSnapshot,
-    SignalAction,
     TradeContext,
 )
 from binnair_trading_engine.predictor import (
-    DummyPredictor,
     RuleBasedPredictor,
+    TimesFMPredictor,
     TorchPredictor,
 )
 from binnair_trading_engine.predictor.artifact import ModelArtifactMetadata
 from binnair_trading_engine.predictor.feature_provider import DummyFeatureVectorProvider
+from binnair_trading_engine.config.settings import PredictorTimesFMConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,20 +68,12 @@ def run_inference(predictor_name: str, predictor) -> None:
 
 
 def main() -> int:
-    # 1. DummyPredictor (HOLD 기본)
-    logging.info("=== DummyPredictor (HOLD) ===")
-    run_inference("DummyPredictor", DummyPredictor())
-
-    # 2. DummyPredictor (force BUY)
-    logging.info("=== DummyPredictor (force BUY) ===")
-    run_inference("DummyPredictor[BUY]", DummyPredictor(force_action=SignalAction.BUY))
-
-    # 3. RuleBasedPredictor (가격 임계값)
+    # 1. RuleBasedPredictor (가격 임계값)
     logging.info("=== RuleBasedPredictor ===")
     rule = RuleBasedPredictor(buy_threshold=60000.0, sell_threshold=40000.0)
     run_inference("RuleBasedPredictor", rule)
 
-    # 4. TorchPredictor (artifact 없으면 HOLD fallback)
+    # 2. TorchPredictor (artifact 없으면 HOLD fallback)
     logging.info("=== TorchPredictor (fallback HOLD) ===")
     artifact = ModelArtifactMetadata(
         model_path="./models/nonexistent.pt",
@@ -94,6 +86,13 @@ def main() -> int:
     provider = DummyFeatureVectorProvider(dim=8, fill=0.0)
     torch_pred = TorchPredictor(artifact=artifact, feature_provider=provider)
     run_inference("TorchPredictor", torch_pred)
+
+    # 3. TimesFMPredictor (히스토리 부족 시 HOLD)
+    logging.info("=== TimesFMPredictor (warmup HOLD) ===")
+    timesfm_pred = TimesFMPredictor(
+        PredictorTimesFMConfig(context_length=8, min_context=4, horizon=1)
+    )
+    run_inference("TimesFMPredictor", timesfm_pred)
 
     return 0
 

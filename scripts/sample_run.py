@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 샘플 실행: market tick -> signal -> risk -> order -> execution -> persistence
-Paper trading 기본, DummyPredictor(force_action=BUY) 로 1회 주문 검증.
+설정된 Predictor로 1회 tick 처리 검증.
 """
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from binnair_trading_engine.app.bootstrap import bootstrap
-from binnair_trading_engine.domain.models import MarketSnapshot, SignalAction
-from binnair_trading_engine.predictor import DummyPredictor
+from binnair_trading_engine.domain.models import MarketSnapshot
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,12 +26,10 @@ def main() -> int:
     engine = bootstrap()
     run_id = engine._ctx.run_id
 
-    # DummyPredictor를 BUY 강제로 교체 (테스트용)
-    engine._predictor = DummyPredictor(force_action=SignalAction.BUY)
-
     engine.start()
 
     # 1. Market snapshot 시뮬레이션
+    # TimesFM은 충분한 가격 히스토리가 쌓이기 전까지 HOLD를 반환한다.
     snapshot = MarketSnapshot(
         symbol="BTCUSDT",
         price=50000.0,

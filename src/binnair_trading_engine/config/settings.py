@@ -27,14 +27,14 @@ class ExchangeConfig:
     """거래소 설정."""
     adapter_type: str = "binance"  # 거래소 어댑터 타입. 현재 구현은 binance 전용.
     market_type: str = "futures"  # 시장 타입: "spot"(현물) | "futures"(선물 USD-M).
-    paper_mode: bool = False  # True=로컬 모의거래, False=거래소 API(실거래/테스트넷) 사용.
+    paper_mode: bool = True  # True=로컬 모의거래, False=거래소 API(실거래/테스트넷) 사용.
     api_key: str = "xlgGWr2oz7HVDC3HIEc215eh6FL5yMc5zKT8DjQgFTUJKslnx5q0rG7u0YjHYsXj"  # 테스트넷/실거래 API Key.
     api_secret: str = "WUKjcGfFbe7B4uL2CevElu8UGMrPjyugQuvEfZAlN6Zh86n36TUYMQ1kNB5DOKVu"  # 테스트넷/실거래 API Secret.
     base_url: str = "https://testnet.binancefuture.com"  # Binance Futures Testnet URL.
     leverage: int = 3  # 선물 레버리지 배수. market_type="futures"에서만 적용.
     margin_type: str = "ISOLATED"  # 선물 마진 모드: "ISOLATED"(격리) | "CROSSED"(교차).
     position_side_mode: str = "ONE_WAY"  # 포지션 모드: "ONE_WAY"(단방향) | "HEDGE"(양방향).
-    oco_enabled: bool = True  # 진입 직후 TP/SL 보호주문(OCO 유사 reduceOnly 2주문) 자동 등록 여부.
+    oco_enabled: bool = False  # 진입 직후 TP/SL 보호주문(OCO 유사 reduceOnly 2주문) 자동 등록 여부.
 
 
 @dataclass
@@ -72,8 +72,8 @@ class MarketDataConfig:
 class TradeRulesConfig:
     """진입/청산 규칙 (TP/SL 등)."""
 
-    tp_pct: float = 0.02  # TP: 목표가 = 체결가 * (1 + tp_pct)
-    sl_pct: float = 0.01  # SL: 손절가 = 체결가 * (1 - sl_pct)
+    tp_pct: float = 0.0  # TP: 목표가 = 체결가 * (1 + tp_pct)
+    sl_pct: float = 0.0  # SL: 손절가 = 체결가 * (1 - sl_pct)
 
 
 @dataclass
@@ -88,6 +88,21 @@ class PredictorTorchConfig:
 
 
 @dataclass
+class PredictorTimesFMConfig:
+    """TimesFM 사전학습 모델 예측기 설정."""
+    model_id: str = "google/timesfm-2.5-200m-pytorch"
+    context_length: int = 128
+    min_context: int = 64
+    horizon: int = 3
+    forecast_index: int = -1
+    fee_rate: float = 0.0004
+    slippage_rate: float = 0.0005
+    safety_margin: float = 0.001
+    model_version: str = "timesfm-2.5-200m"
+    feature_set_version: str = "price-history-v1"
+
+
+@dataclass
 class EngineConfig:
     """엔진 전체 설정."""
     run_context: RunContext
@@ -95,8 +110,9 @@ class EngineConfig:
     storage: StorageConfig
     market_data: MarketDataConfig
     trade_rules: TradeRulesConfig = field(default_factory=TradeRulesConfig)
-    predictor_type: str = "dummy"
+    predictor_type: str = "timesfm"
     predictor_config: PredictorTorchConfig | None = None
+    predictor_timesfm_config: PredictorTimesFMConfig | None = None
     risk_enabled: bool = True
     state_persist_path: Path | None = None
     log_level: str = "INFO"
@@ -171,6 +187,19 @@ class EngineConfig:
             feature_set_version=tor.get("feature_set_version", ""),
             scaler_version=tor.get("scaler_version", ""),
         ) if tor else None
+        tfm = pc.get("timesfm") or {}
+        pred_timesfm = PredictorTimesFMConfig(
+            model_id=tfm.get("model_id", PredictorTimesFMConfig.model_id),
+            context_length=int(tfm.get("context_length", PredictorTimesFMConfig.context_length)),
+            min_context=int(tfm.get("min_context", PredictorTimesFMConfig.min_context)),
+            horizon=int(tfm.get("horizon", PredictorTimesFMConfig.horizon)),
+            forecast_index=int(tfm.get("forecast_index", PredictorTimesFMConfig.forecast_index)),
+            fee_rate=float(tfm.get("fee_rate", PredictorTimesFMConfig.fee_rate)),
+            slippage_rate=float(tfm.get("slippage_rate", PredictorTimesFMConfig.slippage_rate)),
+            safety_margin=float(tfm.get("safety_margin", PredictorTimesFMConfig.safety_margin)),
+            model_version=tfm.get("model_version", PredictorTimesFMConfig.model_version),
+            feature_set_version=tfm.get("feature_set_version", PredictorTimesFMConfig.feature_set_version),
+        ) if tfm else None
         sp = data.get("state_persist_path")
         return cls(
             run_context=run_ctx,
@@ -178,8 +207,9 @@ class EngineConfig:
             storage=stor_cfg,
             market_data=md_cfg,
             trade_rules=trade_rules_cfg,
-            predictor_type=data.get("predictor_type", "dummy"),
+            predictor_type=data.get("predictor_type", "timesfm"),
             predictor_config=pred_torch,
+            predictor_timesfm_config=pred_timesfm,
             risk_enabled=data.get("risk_enabled", True),
             state_persist_path=Path(sp) if sp else None,
             log_level=data.get("log_level", "INFO"),
