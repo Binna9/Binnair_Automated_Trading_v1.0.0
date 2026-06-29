@@ -27,6 +27,7 @@ from binnair_trading_engine.exchange import ExchangeAdapter
 from binnair_trading_engine.position import PositionManager
 from binnair_trading_engine.predictor import Predictor
 from binnair_trading_engine.risk import RiskChecker, RiskCheckResult
+from binnair_trading_engine.signal import ConsecutiveSignalPolicy
 from binnair_trading_engine.state import StateManager
 from binnair_trading_engine.storage import StorageLayer
 from binnair_trading_engine.strategy import Strategy
@@ -53,6 +54,7 @@ class TradingEngine:
         state_manager: StateManager,
         position_manager: PositionManager,
         exit_manager: ExitManager,
+        signal_policy: ConsecutiveSignalPolicy,
     ) -> None:
         self._config = config
         self._ctx = ctx
@@ -64,6 +66,7 @@ class TradingEngine:
         self._state = state_manager
         self._position_manager = position_manager
         self._exit_manager = exit_manager
+        self._signal_policy = signal_policy
 
     def start(self) -> None:
         """엔진 시작: DB 포지션 복구, 상태 복구, engine_run 기록."""
@@ -133,10 +136,24 @@ class TradingEngine:
         if pred is not None:
             self._storage.save_model_inference(snapshot, pred)
 
-        if pred is None or pred.action == SignalAction.HOLD:
+        if pred is None:
             logger.debug(
-                "Signal HOLD or no prediction",
+                "No prediction",
                 extra={"run_id": run_id, "symbol": symbol, "correlation_id": corr_id},
+            )
+            return
+
+        self._signal_policy.record(symbol, pred.action)
+
+        if pred.action != SignalAction.BUY or not self._signal_policy.allows_entry(symbol):
+            logger.debug(
+                "Signal filtered by policy",
+                extra={
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "action": pred.action.value,
+                    "correlation_id": corr_id,
+                },
             )
             return
 
@@ -235,6 +252,7 @@ class TradingEngine:
                         sl_price=sl_price,
                     )
                     self._storage.save_position(pos)
+                    self._signal_policy.reset(symbol)
                     logger.info(
                         "Position opened with TP/SL",
                         extra={
@@ -288,18 +306,64 @@ class TradingEngine:
         corr_id: str,
     ) -> None:
         """
-        보유 포지션 exit 관리. ExitManager로 TP/SL 판정 후 청산.
-        predictor 호출하지 않음. 기존 주문 흐름(order_request, order_execution) 사용.
+        보유 포지션 exit 관리.
+        1. TP/SL 도달 시 우선 청산
+        2. TP/SL 미도달 시 모델 SELL 3회 연속이면 롱 청산
         """
         result = self._exit_manager.check_exit(pos, snapshot)
-        if result is None:
-            return
-        if self._exchange.manages_exit_orders:
-            # 거래소 보호주문이 청산을 처리하므로 로컬 청산 주문은 제출하지 않는다.
+        if result is not None:
+            if self._exchange.manages_exit_orders:
+                # 거래소 보호주문이 청산을 처리하므로 로컬 TP/SL 청산 주문은 제출하지 않는다.
+                return
+            self._submit_exit_order(
+                snapshot=snapshot,
+                pos=pos,
+                intent=result.intent,
+                exit_reason=result.reason,
+                run_id=run_id,
+                corr_id=corr_id,
+            )
             return
 
-        intent = result.intent
-        exit_reason = result.reason
+        trade_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
+        pred = self._predictor.predict(snapshot, trade_ctx)
+        if pred is not None:
+            self._storage.save_model_inference(snapshot, pred)
+        if pred is None:
+            return
+
+        self._signal_policy.record(snapshot.symbol, pred.action)
+        if not pos.is_long() or not self._signal_policy.allows_long_exit(snapshot.symbol):
+            return
+
+        intent = OrderIntent(
+            symbol=snapshot.symbol,
+            side=OrderSide.SELL,
+            order_type=OrderType.MARKET,
+            quantity=pos.quantity,
+            price=None,
+            reduce_only=True,
+            position_side="LONG",
+        )
+        self._submit_exit_order(
+            snapshot=snapshot,
+            pos=pos,
+            intent=intent,
+            exit_reason="MODEL_SELL",
+            run_id=run_id,
+            corr_id=corr_id,
+        )
+
+    def _submit_exit_order(
+        self,
+        snapshot: MarketSnapshot,
+        pos: Position,
+        intent: OrderIntent,
+        exit_reason: str,
+        run_id: str,
+        corr_id: str,
+    ) -> None:
+        """청산 주문 실행 및 position_snapshot/audit 저장."""
         symbol = snapshot.symbol
         price = snapshot.price
         execution_price = price
@@ -331,6 +395,7 @@ class TradingEngine:
             )
             if closed_pos:
                 self._storage.save_position(closed_pos)
+                self._signal_policy.reset(symbol)
                 exit_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
                 exit_ctx.correlation_id = corr_id  # type: ignore[attr-defined]
                 self._storage.save_audit(

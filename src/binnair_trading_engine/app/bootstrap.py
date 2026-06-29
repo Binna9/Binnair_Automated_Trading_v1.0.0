@@ -13,6 +13,7 @@ from binnair_trading_engine.market_data import create_price_history_provider
 from binnair_trading_engine.position import PositionManager
 from binnair_trading_engine.predictor import create_predictor
 from binnair_trading_engine.risk import create_risk_checker
+from binnair_trading_engine.signal import ConsecutiveSignalPolicy
 from binnair_trading_engine.state import create_state_manager
 from binnair_trading_engine.storage import create_storage
 from binnair_trading_engine.strategy import create_strategy
@@ -46,6 +47,10 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
     strategy = create_strategy(config)
     position_manager = PositionManager(run_id=rc.run_id)
     exit_manager = ExitManager()
+    signal_policy = ConsecutiveSignalPolicy(
+        consecutive_required=config.signal_policy.consecutive_required,
+        mode=config.signal_policy.mode,
+    )
 
     engine = TradingEngine(
         config=config,
@@ -58,5 +63,6 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
         state_manager=state_manager,
         position_manager=position_manager,
         exit_manager=exit_manager,
+        signal_policy=signal_policy,
     )
     return engine

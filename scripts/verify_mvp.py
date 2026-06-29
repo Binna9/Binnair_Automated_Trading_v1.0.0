@@ -60,9 +60,16 @@ def _order_count(engine) -> int:
     return len(engine._exchange._orders)
 
 
-def run_scenario(name: str, engine, predictor_action: SignalAction, price: float) -> None:
+def run_scenario(
+    name: str,
+    engine,
+    predictor_action: SignalAction,
+    price: float,
+    repeats: int = 1,
+) -> None:
     engine._predictor = DummyPredictor(force_action=predictor_action)
-    engine.run_cycle(_snap(price, engine._ctx.run_id))
+    for _ in range(repeats):
+        engine.run_cycle(_snap(price, engine._ctx.run_id))
 
 
 def _clear_open_positions_for_verify(symbol: str) -> None:
@@ -181,11 +188,11 @@ def main() -> int:
         raise AssertionError(msg)
 
     try:
-        # === 시나리오 1: 포지션 없음 + BUY → 진입, 포지션+TP/SL ===
-        print("\n[시나리오 1] 포지션 없음 + BUY → 진입, 포지션 생성, TP/SL 저장")
+        # === 시나리오 1: 포지션 없음 + BUY 3회 연속 → 진입, 포지션+TP/SL ===
+        print("\n[시나리오 1] 포지션 없음 + BUY 3회 연속 → 진입, 포지션 생성, TP/SL 저장")
         assert not pm.has_open_position(SYMBOL), "초기 포지션 없어야 함"
         orders_before = _order_count(engine)
-        run_scenario("1", engine, SignalAction.BUY, ENTRY_PRICE)
+        run_scenario("1", engine, SignalAction.BUY, ENTRY_PRICE, repeats=3)
         orders_after = _order_count(engine)
 
         if not pm.has_open_position(SYMBOL):
@@ -223,7 +230,7 @@ def main() -> int:
 
         # === 시나리오 4: 재진입 후 SL 도달 → SELL 청산 ===
         print("\n[시나리오 4] 재진입 후 SL 도달 → SELL 청산")
-        run_scenario("4a", engine, SignalAction.BUY, ENTRY_PRICE)
+        run_scenario("4a", engine, SignalAction.BUY, ENTRY_PRICE, repeats=3)
         if not pm.has_open_position(SYMBOL):
             fail("재진입 필요")
         orders_before = _order_count(engine)
@@ -236,9 +243,9 @@ def main() -> int:
             fail("SELL 청산 주문 생성됐어야 함")
         ok("SL 청산 완료")
 
-        # === 시나리오 5: 포지션 보유 + predictor SELL → 무시 ===
-        print("\n[시나리오 5] 포지션 보유 + predictor SELL → 무시", flush=True)
-        run_scenario("5a", engine, SignalAction.BUY, ENTRY_PRICE)
+        # === 시나리오 5: 포지션 보유 + predictor SELL 1회 → 무시 ===
+        print("\n[시나리오 5] 포지션 보유 + predictor SELL 1회 → 무시", flush=True)
+        run_scenario("5a", engine, SignalAction.BUY, ENTRY_PRICE, repeats=3)
         if not pm.has_open_position(SYMBOL):
             fail("재진입 필요")
         orders_before = _order_count(engine)

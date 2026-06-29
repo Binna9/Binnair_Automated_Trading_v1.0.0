@@ -113,6 +113,8 @@ src/binnair_trading_engine/
 ├── risk/                   # 리스크 관리
 │   ├── checker.py         # RiskChecker
 │   └── default.py         # DefaultRiskChecker
+├── signal/                 # 모델 시그널 후처리 정책
+│   └── policy.py          # ConsecutiveSignalPolicy
 ├── storage/                # 저장 레이어
 │   ├── interface.py       # OrderStore, SignalStore, PositionStore 등
 │   ├── postgres.py        # PostgresStorage (메모리, backend=memory)
@@ -150,6 +152,7 @@ config/
 | **predictor** | Predictor. TimesFM, DummyPredictor, RuleBasedPredictor, TorchPredictor |
 | **position** | PositionManager: open/close, 미실현 PnL, DB 스냅샷 복구 |
 | **risk** | RiskChecker: check(intent, ctx) → passed/rejected |
+| **signal** | TimesFM BUY/HOLD/SELL을 주문 가능한 정책 신호로 필터링 |
 | **storage** | Order/Signal/Position/Trade/Audit 저장. PostgresDbStorage (backend=postgres) |
 | **state** | StateManager: start/stop/heartbeat, JSON 파일 persist |
 | **strategy** | Strategy.decide → OrderIntent. ExitManager: TP/SL 도달 여부 판단 |
@@ -241,6 +244,10 @@ trade_rules:
   tp_pct: 0.02   # TP: 체결가 * (1 + tp_pct)
   sl_pct: 0.01   # SL: 체결가 * (1 - sl_pct)
 
+signal_policy:
+  consecutive_required: 3
+  mode: "long_only"   # BUY 3회 연속 진입, SELL 3회 연속 롱 청산
+
 predictor_type: "timesfm"   # "dummy" | "rule_based" | "torch" | "timesfm"
 risk_enabled: true
 
@@ -253,6 +260,19 @@ predictor_config:
     horizon: 3
 state_persist_path: "./data/state"
 ```
+
+### TimesFM 3회 시그널 정책
+
+TimesFM의 단일 예측값은 바로 주문으로 쓰지 않고, `ConsecutiveSignalPolicy`가 심볼별 최근 시그널을 누적해 노이즈를 줄인다.
+
+```text
+포지션 없음 + BUY 3회 연속  → 롱 진입
+포지션 없음 + HOLD/SELL     → 대기
+롱 포지션 있음 + SELL 3회 연속 → 시장가 청산
+롱 포지션 있음 + BUY/HOLD   → 유지, TP/SL 계속 감시
+```
+
+`SELL`은 1차 정책에서 숏 진입이 아니라 **롱 청산 신호**로만 사용한다.
 
 ---
 

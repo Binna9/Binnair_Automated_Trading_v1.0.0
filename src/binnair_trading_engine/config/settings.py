@@ -77,6 +77,14 @@ class TradeRulesConfig:
 
 
 @dataclass
+class SignalPolicyConfig:
+    """모델 시그널 후처리 정책 설정."""
+
+    consecutive_required: int = 3
+    mode: str = "long_only"
+
+
+@dataclass
 class PredictorTorchConfig:
     """TorchPredictor 아티팩트 설정."""
     model_path: str = ""
@@ -112,6 +120,7 @@ class EngineConfig:
     storage: StorageConfig
     market_data: MarketDataConfig
     trade_rules: TradeRulesConfig = field(default_factory=TradeRulesConfig)
+    signal_policy: SignalPolicyConfig = field(default_factory=SignalPolicyConfig)
     predictor_type: str = "timesfm"
     predictor_config: PredictorTorchConfig | None = None
     predictor_timesfm_config: PredictorTimesFMConfig | None = None
@@ -179,6 +188,17 @@ class EngineConfig:
             tp_pct=float(tr.get("tp_pct", default_trade_rules.tp_pct)),
             sl_pct=float(tr.get("sl_pct", default_trade_rules.sl_pct)),
         )
+        sp_cfg_data = data.get("signal_policy", {})
+        default_signal_policy = SignalPolicyConfig()
+        signal_policy_cfg = SignalPolicyConfig(
+            consecutive_required=int(
+                sp_cfg_data.get(
+                    "consecutive_required",
+                    default_signal_policy.consecutive_required,
+                )
+            ),
+            mode=sp_cfg_data.get("mode", default_signal_policy.mode),
+        )
         pc = data.get("predictor_config") or {}
         tor = pc.get("torch") or {}
         pred_torch = PredictorTorchConfig(
@@ -211,6 +231,7 @@ class EngineConfig:
             storage=stor_cfg,
             market_data=md_cfg,
             trade_rules=trade_rules_cfg,
+            signal_policy=signal_policy_cfg,
             predictor_type=data.get("predictor_type", "timesfm"),
             predictor_config=pred_torch,
             predictor_timesfm_config=pred_timesfm,
