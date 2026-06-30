@@ -1,1 +1,4 @@
-"""Infrastructure layer."""
+"""
+인프라 계층 패키지다.
+DB, persistence 등 외부 시스템 연동 구현을 하위 모듈로 분리한다.
+"""

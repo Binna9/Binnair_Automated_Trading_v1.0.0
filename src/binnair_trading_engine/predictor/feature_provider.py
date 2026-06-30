@@ -1,6 +1,6 @@
 """
-Feature vector provider 인터페이스.
-전체 feature engineering 재구현 없이, 벡터 제공 추상화.
+TorchPredictor 입력 feature vector 공급자를 정의한다.
+현재는 테스트용 dummy vector provider를 제공한다.
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """
-SQLAlchemy 2.x DB 모델.
-자동매매 엔진 실행 이력 추적용.
+SQLAlchemy ORM 테이블 모델을 정의한다.
+OHLCV, 실행 이력, 시그널, 주문, 포지션, 추론 이벤트, 감사 로그 스키마를 관리한다.
 """
 from __future__ import annotations
 

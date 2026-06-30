@@ -1,6 +1,6 @@
 """
-Model artifact metadata.
-.pt 가중치, scaler, feature order 경로 및 버전 추적.
+TorchPredictor artifact 메타데이터를 정의한다.
+모델 파일, scaler, feature order 경로와 버전 정보를 한곳에 보관한다.
 """
 from __future__ import annotations
 

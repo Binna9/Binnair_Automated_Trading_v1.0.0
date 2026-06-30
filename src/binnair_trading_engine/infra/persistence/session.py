@@ -1,6 +1,6 @@
 """
-DB 세션 관리.
-SQLAlchemy 2.x Engine 및 SessionFactory.
+Postgres DB 엔진과 세션 팩토리를 생성한다.
+설정 기반 DATABASE URL과 schema search_path 초기화를 담당한다.
 """
 from __future__ import annotations
 

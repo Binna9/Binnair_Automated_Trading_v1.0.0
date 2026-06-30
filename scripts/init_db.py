@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-DB 초기화: 테이블 생성.
-config의 storage 설정에서 DB 접속 정보 로드. (CONFIG_PATH 환경변수 사용)
+설정된 Postgres 스키마에 엔진 persistence 테이블을 생성한다.
+개발/초기화 시 기존 스키마 삭제 후 재생성도 지원한다.
 """
 from __future__ import annotations
 

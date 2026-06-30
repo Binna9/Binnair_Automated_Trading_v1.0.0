@@ -1,4 +1,7 @@
-"""PostgreSQL 스토리지 구현 (골격만)."""
+"""
+메모리 기반 MVP 저장소 구현이다.
+PostgresStorage 이름을 유지하지만 backend=memory에서 테스트용으로 사용한다.
+"""
 
 from datetime import datetime, timedelta
 

@@ -1,4 +1,7 @@
-"""엔진 메인 엔트리포인트."""
+"""
+자동매매 엔진 CLI 진입점이다.
+설정 파일을 받아 market data polling 루프를 실행하고 종료 신호를 처리한다.
+"""
 
 import argparse
 import logging

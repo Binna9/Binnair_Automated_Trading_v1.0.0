@@ -1,7 +1,6 @@
 """
-PositionManager: 현재 포지션 계산/조회 전용.
-StateManager(파일 persist/복구)와 별개로 포지션 상태만 관리.
-초기 버전: 심볼당 포지션 1개, dict[str, Position].
+엔진 내부의 현재 포지션 상태를 관리한다.
+포지션 오픈, 청산, 미실현 손익 갱신, DB snapshot 복구를 담당한다.
 """
 
 from __future__ import annotations

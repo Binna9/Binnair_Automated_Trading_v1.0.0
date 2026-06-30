@@ -1,4 +1,7 @@
-"""Pass-through 전략: predictor 출력을 그대로 OrderIntent로 전달."""
+"""
+모델 시그널을 최소 변형해 주문 의도로 바꾸는 기본 전략이다.
+TP/SL 가격과 잔고 기반 주문 수량을 계산한다.
+"""
 
 from binnair_trading_engine.domain.models import (
     OrderIntent,
@@ -9,6 +12,8 @@ from binnair_trading_engine.domain.models import (
     SignalAction,
     TradeContext,
 )
+from binnair_trading_engine.exchange import ExchangeAdapter
+from binnair_trading_engine.risk.sizing import PercentEquitySizingPolicy
 from binnair_trading_engine.strategy.interface import Strategy
 
 
@@ -23,9 +28,21 @@ def _action_to_side(action: SignalAction) -> OrderSide | None:
 class PassthroughStrategy(Strategy):
     """모델 예측을 최소 변형하여 주문 의도로 변환."""
 
-    def __init__(self, tp_pct: float = 0.02, sl_pct: float = 0.01) -> None:
+    def __init__(
+        self,
+        tp_pct: float = 0.02,
+        sl_pct: float = 0.01,
+        sizing_policy: PercentEquitySizingPolicy | None = None,
+        exchange: ExchangeAdapter | None = None,
+        quote_asset: str = "USDT",
+        fallback_equity_usdt: float = 0.0,
+    ) -> None:
         self._tp_pct = max(0.0, tp_pct)
         self._sl_pct = max(0.0, sl_pct)
+        self._sizing_policy = sizing_policy
+        self._exchange = exchange
+        self._quote_asset = quote_asset
+        self._fallback_equity_usdt = max(0.0, fallback_equity_usdt)
 
     def decide(
         self,
@@ -51,13 +68,42 @@ class PassthroughStrategy(Strategy):
                 if self._sl_pct > 0:
                     sl_price = entry_price * (1.0 + self._sl_pct)
 
+        quantity = self._calculate_quantity(entry_price, sl_price)
+        if quantity <= 0:
+            return None
+
         return OrderIntent(
             symbol=signal.symbol,
             side=side,
             order_type=OrderType.MARKET,
-            quantity=1.0,  # TODO: 전략별 수량 계산
+            quantity=quantity,
             price=entry_price,
             take_profit_price=tp_price,
             stop_loss_price=sl_price,
             position_side="LONG" if side == OrderSide.BUY else "SHORT",
         )
+
+    def _calculate_quantity(
+        self,
+        entry_price: float | None,
+        stop_loss_price: float | None,
+    ) -> float:
+        if self._sizing_policy is None:
+            return 1.0
+
+        equity = self._get_equity()
+        result = self._sizing_policy.calculate(
+            equity=equity,
+            entry_price=entry_price,
+            stop_loss_price=stop_loss_price,
+        )
+        return result.quantity if result.is_valid else 0.0
+
+    def _get_equity(self) -> float:
+        if self._exchange is None:
+            return self._fallback_equity_usdt
+
+        equity = self._exchange.get_available_balance(self._quote_asset)
+        if equity > 0:
+            return equity
+        return self._fallback_equity_usdt

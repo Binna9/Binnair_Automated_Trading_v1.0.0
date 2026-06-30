@@ -1,4 +1,7 @@
-"""거래소 어댑터."""
+"""
+거래소 어댑터 팩토리 패키지다.
+설정에 따라 paper, Binance Spot, Binance Futures 어댑터를 생성한다.
+"""
 
 from binnair_trading_engine.exchange.binance_futures import BinanceFuturesAdapter
 from binnair_trading_engine.exchange.binance_spot import BinanceSpotAdapter

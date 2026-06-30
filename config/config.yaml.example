@@ -1,0 +1,89 @@
+# BinnAIR testnet configuration example.
+# 실제 실행 시 이 파일을 config/config.yaml로 복사하고 API 키/DB 비밀번호를 채우세요.
+
+run_context:
+  run_id: "testnet_timesfm_run"
+  strategy_id: "timesfm_consecutive_long_only"
+  model_version: "timesfm-2.5-200m"
+  feature_set_version: "price-history-v1"
+  version: "1.0.0"
+  user_id: "default"
+
+market_data:
+  enabled: true
+  provider: "binance_rest"
+  symbol: "BTCUSDT"
+  # 1m OHLCV 기반 TimesFM 판단과 맞추려면 엔진 평가 주기도 60초 권장.
+  poll_interval_seconds: 60.0
+  base_url: "https://api.binance.com"
+  timeout: 10.0
+
+exchange:
+  adapter_type: "binance"
+  market_type: "futures"
+  paper_mode: false
+  # Binance Futures Testnet URL.
+  base_url: "https://testnet.binancefuture.com"
+  api_key: "PUT_TESTNET_API_KEY_HERE"
+  api_secret: "PUT_TESTNET_API_SECRET_HERE"
+  leverage: 2
+  margin_type: "ISOLATED"
+  position_side_mode: "ONE_WAY"
+  # false면 엔진이 로컬 TP/SL 청산을 처리한다. true면 거래소 reduceOnly 보호주문을 사용한다.
+  oco_enabled: false
+
+storage:
+  backend: "postgres"
+  host: "localhost"
+  port: 5432
+  dbname: "binnair"
+  user: "binnair"
+  password: "PUT_DB_PASSWORD_HERE"
+  schema: "trade"
+
+trade_rules:
+  # TP/SL은 진입가 기준 비율이다. sl_pct는 sizing의 손절 거리 계산에도 사용된다.
+  tp_pct: 0.01
+  sl_pct: 0.005
+
+sizing:
+  quote_asset: "USDT"
+  # 한 번의 거래에서 감수할 최대 손실 비율. 0.005 = 지갑 잔고의 0.5%.
+  risk_per_trade_pct: 0.005
+  # 한 포지션에 투입할 최대 명목 금액 비율. 0.20 = 지갑 잔고의 20%.
+  max_position_notional_pct: 0.20
+  # 거래소 최소 주문 금액 미달을 막기 위한 하한.
+  min_order_notional_usdt: 5.0
+  # sizing 계산상 허용하는 레버리지 상한. exchange.leverage보다 크게 잡지 않는 것을 권장.
+  max_leverage: 2
+  # 테스트넷 잔고 조회 실패 시 사용할 비상값. 0이면 주문을 생성하지 않는다.
+  fallback_equity_usdt: 0.0
+
+risk:
+  # 주문 직전 최종 검문. sizing과 같은 값으로 두면 이중 안전장치가 된다.
+  max_position_notional_pct: 0.20
+  # 하루 손실 제한. 0.03 = 지갑 잔고의 3% 손실 시 신규 주문 차단.
+  daily_loss_limit_pct: 0.03
+  # 같은 심볼/같은 방향 주문을 막는 최소 간격.
+  duplicate_order_window_seconds: 180
+
+signal_policy:
+  consecutive_required: 3
+  mode: "long_only"
+
+predictor_type: "timesfm"
+predictor_config:
+  timesfm:
+    model_id: "google/timesfm-2.5-200m-pytorch"
+    use_ohlcv_history: true
+    timeframe: "1m"
+    context_length: 128
+    min_context: 64
+    horizon: 3
+    forecast_index: -1
+    fee_rate: 0.0004
+    slippage_rate: 0.0005
+    safety_margin: 0.001
+
+risk_enabled: true
+state_persist_path: "./data/state/engine_state.json"

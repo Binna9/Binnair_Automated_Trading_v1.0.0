@@ -1,4 +1,7 @@
-"""Dummy 예측기 (기본값)."""
+"""
+고정 action을 반환하는 테스트용 예측기다.
+엔진 시나리오와 persistence 검증에서 결정적 시그널을 만들 때 사용한다.
+"""
 
 from binnair_trading_engine.domain.models import (
     MarketSnapshot,

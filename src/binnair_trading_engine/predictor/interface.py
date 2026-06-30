@@ -1,4 +1,7 @@
-"""예측 모듈 인터페이스."""
+"""
+예측기 공통 인터페이스를 정의한다.
+MarketSnapshot과 TradeContext를 받아 Prediction을 반환하는 계약을 제공한다.
+"""
 
 from __future__ import annotations
 

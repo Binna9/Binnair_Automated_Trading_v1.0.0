@@ -1,4 +1,7 @@
-"""도메인 엔티티 모델."""
+"""
+자동매매 엔진의 핵심 도메인 객체를 정의한다.
+시세, 예측, 시그널, 주문, 체결, 포지션, 실행 컨텍스트를 모듈 간 공통 언어로 사용한다.
+"""
 
 from dataclasses import dataclass, field
 from datetime import datetime

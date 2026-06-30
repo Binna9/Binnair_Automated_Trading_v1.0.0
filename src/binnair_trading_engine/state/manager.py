@@ -1,4 +1,7 @@
-"""상태 저장/복구 관리자. 장애 복구와 상태 일관성용."""
+"""
+엔진 실행 상태를 메모리와 선택적 파일에 저장한다.
+start, heartbeat, stop 상태를 기록해 장애 복구 기반을 제공한다.
+"""
 
 from __future__ import annotations
 

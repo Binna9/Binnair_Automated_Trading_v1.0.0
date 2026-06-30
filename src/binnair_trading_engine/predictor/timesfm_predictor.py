@@ -1,8 +1,6 @@
 """
-TimesFM 기반 예측기.
-
-현재 엔진은 tick 단위 MarketSnapshot만 전달하므로, Predictor 내부에서
-최근 가격 히스토리를 누적한 뒤 사전학습 TimesFM 모델로 미래 가격을 예측한다.
+TimesFM 사전학습 모델로 미래 가격을 예측한다.
+최근 close 히스토리 forecast를 expected return으로 바꿔 BUY/HOLD/SELL을 산출한다.
 """
 from __future__ import annotations
 

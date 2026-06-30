@@ -1,4 +1,7 @@
-"""예측/추론 모듈."""
+"""
+예측기 패키지와 Predictor factory를 제공한다.
+설정에 따라 TimesFM, Torch, RuleBased, Dummy predictor를 생성한다.
+"""
 
 from __future__ import annotations
 

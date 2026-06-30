@@ -1,4 +1,7 @@
-"""Binance REST API 시세 조회."""
+"""
+Binance 공개 REST API로 시세와 klines를 조회한다.
+ticker snapshot과 OHLCV 캔들 도메인 객체를 생성한다.
+"""
 
 from __future__ import annotations
 

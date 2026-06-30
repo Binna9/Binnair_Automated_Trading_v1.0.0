@@ -1,4 +1,7 @@
-"""스토리지 인터페이스 정의."""
+"""
+엔진이 사용하는 저장소 Protocol을 정의한다.
+주문, 시그널, 포지션, 추론, 감사 로그 저장 계약을 제공한다.
+"""
 
 from abc import ABC, abstractmethod
 from datetime import datetime

@@ -1,4 +1,7 @@
-"""가격 히스토리 공급자."""
+"""
+TimesFM 입력용 가격 히스토리 공급자를 정의한다.
+ohlcv_candle DB의 최근 close 시계열을 Predictor에 전달한다.
+"""
 from __future__ import annotations
 
 import logging

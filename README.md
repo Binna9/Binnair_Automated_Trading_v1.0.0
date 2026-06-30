@@ -208,6 +208,7 @@ binnair-engine -c config/config.yaml
 ## 설정 (config.yaml)
 
 `config/config.yaml`이 없으면 `config/` 디렉터리를 만들고 아래 예시를 참고해 생성하세요.
+실행용 템플릿은 `config/config.yaml.example`에도 포함되어 있습니다.
 
 ```yaml
 run_context:
@@ -244,6 +245,19 @@ trade_rules:
   tp_pct: 0.02   # TP: 체결가 * (1 + tp_pct)
   sl_pct: 0.01   # SL: 체결가 * (1 - sl_pct)
 
+sizing:
+  quote_asset: "USDT"
+  risk_per_trade_pct: 0.005        # 1회 거래 허용 손실: 지갑의 0.5%
+  max_position_notional_pct: 0.20  # 한 포지션 최대 명목 금액: 지갑의 20%
+  min_order_notional_usdt: 5.0
+  max_leverage: 2
+  fallback_equity_usdt: 0.0        # 잔고 조회 실패 시 0이면 주문 생성 안 함
+
+risk:
+  max_position_notional_pct: 0.20
+  daily_loss_limit_pct: 0.03       # 하루 손실 3% 초과 시 신규 주문 차단
+  duplicate_order_window_seconds: 180
+
 signal_policy:
   consecutive_required: 3
   mode: "long_only"   # BUY 3회 연속 진입, SELL 3회 연속 롱 청산
@@ -273,6 +287,21 @@ TimesFM의 단일 예측값은 바로 주문으로 쓰지 않고, `ConsecutiveSi
 ```
 
 `SELL`은 1차 정책에서 숏 진입이 아니라 **롱 청산 신호**로만 사용한다.
+
+### 지갑 잔고 기반 수량 계산
+
+주문 수량은 고정 수량이 아니라 Binance 테스트넷 지갑의 `USDT availableBalance`를 기준으로 계산한다.
+
+```text
+허용 손실 = 지갑 잔고 * risk_per_trade_pct
+손절 거리 = abs(진입가 - 손절가) / 진입가
+이론 주문금액 = 허용 손실 / 손절 거리
+최대 주문금액 = 지갑 잔고 * max_position_notional_pct
+최종 주문금액 = min(이론 주문금액, 최대 주문금액, 레버리지 상한)
+quantity = 최종 주문금액 / 진입가
+```
+
+예를 들어 지갑이 100 USDT, `risk_per_trade_pct=0.005`, `sl_pct=0.005`, `max_position_notional_pct=0.20`이면 이론 주문금액은 100 USDT지만 최대 주문금액 제한 때문에 최종 주문금액은 20 USDT가 된다.
 
 ---
 

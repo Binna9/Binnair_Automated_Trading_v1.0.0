@@ -1,6 +1,6 @@
 """
-Persistence layer.
-DB models, DTOs, repository interfaces, Postgres implementations.
+Persistence 계층 공개 API다.
+DB 모델, DTO, 세션, repository 구현을 외부 모듈에서 사용할 수 있게 묶는다.
 """
 
 from binnair_trading_engine.infra.persistence.models import (

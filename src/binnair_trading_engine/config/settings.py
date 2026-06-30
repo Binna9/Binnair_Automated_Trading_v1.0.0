@@ -1,6 +1,6 @@
 """
-엔진 설정 구조.
-Paper trading 기본, 환경변수/파일 기반 로딩.
+엔진 설정 구조와 기본값을 정의한다.
+YAML/환경변수에서 읽은 값을 RunContext, Exchange, Storage, Sizing, Risk 설정으로 변환한다.
 """
 from __future__ import annotations
 
@@ -77,6 +77,27 @@ class TradeRulesConfig:
 
 
 @dataclass
+class SizingConfig:
+    """지갑 잔고 기반 주문 수량 계산 설정."""
+
+    quote_asset: str = "USDT"  # 주문 금액 기준 자산. Binance USD-M Futures는 보통 USDT.
+    risk_per_trade_pct: float = 0.005  # 1회 거래에서 감수할 최대 손실 비율. 0.005 = 지갑의 0.5%.
+    max_position_notional_pct: float = 0.20  # 한 포지션의 최대 명목 금액 비율. 0.20 = 지갑의 20%.
+    min_order_notional_usdt: float = 5.0  # 이 금액보다 작은 주문은 거래소 최소 주문금액 미달 가능성이 있어 차단.
+    max_leverage: int = 2  # sizing 계산상 허용할 최대 레버리지 상한. 거래소 leverage 설정과 함께 관리.
+    fallback_equity_usdt: float = 0.0  # 잔고 조회 실패 시 사용할 비상 값. 0이면 주문 생성 안 함.
+
+
+@dataclass
+class RiskConfig:
+    """주문 직전 최종 리스크 제한 설정."""
+
+    max_position_notional_pct: float = 0.20  # 지갑 대비 최대 포지션 명목 금액 비율.
+    daily_loss_limit_pct: float = 0.03  # 하루 손실 제한. 0.03 = 지갑의 3% 손실 시 신규 주문 차단.
+    duplicate_order_window_seconds: int = 180  # 동일 심볼/동일 방향 중복 주문 최소 간격.
+
+
+@dataclass
 class SignalPolicyConfig:
     """모델 시그널 후처리 정책 설정."""
 
@@ -120,6 +141,8 @@ class EngineConfig:
     storage: StorageConfig
     market_data: MarketDataConfig
     trade_rules: TradeRulesConfig = field(default_factory=TradeRulesConfig)
+    sizing: SizingConfig = field(default_factory=SizingConfig)
+    risk: RiskConfig = field(default_factory=RiskConfig)
     signal_policy: SignalPolicyConfig = field(default_factory=SignalPolicyConfig)
     predictor_type: str = "timesfm"
     predictor_config: PredictorTorchConfig | None = None
@@ -188,6 +211,49 @@ class EngineConfig:
             tp_pct=float(tr.get("tp_pct", default_trade_rules.tp_pct)),
             sl_pct=float(tr.get("sl_pct", default_trade_rules.sl_pct)),
         )
+        sizing = data.get("sizing", {})
+        default_sizing = SizingConfig()
+        sizing_cfg = SizingConfig(
+            quote_asset=sizing.get("quote_asset", default_sizing.quote_asset),
+            risk_per_trade_pct=float(
+                sizing.get("risk_per_trade_pct", default_sizing.risk_per_trade_pct)
+            ),
+            max_position_notional_pct=float(
+                sizing.get(
+                    "max_position_notional_pct",
+                    default_sizing.max_position_notional_pct,
+                )
+            ),
+            min_order_notional_usdt=float(
+                sizing.get(
+                    "min_order_notional_usdt",
+                    default_sizing.min_order_notional_usdt,
+                )
+            ),
+            max_leverage=int(sizing.get("max_leverage", default_sizing.max_leverage)),
+            fallback_equity_usdt=float(
+                sizing.get("fallback_equity_usdt", default_sizing.fallback_equity_usdt)
+            ),
+        )
+        risk = data.get("risk", {})
+        default_risk = RiskConfig()
+        risk_cfg = RiskConfig(
+            max_position_notional_pct=float(
+                risk.get(
+                    "max_position_notional_pct",
+                    default_risk.max_position_notional_pct,
+                )
+            ),
+            daily_loss_limit_pct=float(
+                risk.get("daily_loss_limit_pct", default_risk.daily_loss_limit_pct)
+            ),
+            duplicate_order_window_seconds=int(
+                risk.get(
+                    "duplicate_order_window_seconds",
+                    default_risk.duplicate_order_window_seconds,
+                )
+            ),
+        )
         sp_cfg_data = data.get("signal_policy", {})
         default_signal_policy = SignalPolicyConfig()
         signal_policy_cfg = SignalPolicyConfig(
@@ -231,6 +297,8 @@ class EngineConfig:
             storage=stor_cfg,
             market_data=md_cfg,
             trade_rules=trade_rules_cfg,
+            sizing=sizing_cfg,
+            risk=risk_cfg,
             signal_policy=signal_policy_cfg,
             predictor_type=data.get("predictor_type", "timesfm"),
             predictor_config=pred_torch,

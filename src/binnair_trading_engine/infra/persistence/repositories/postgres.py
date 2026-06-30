@@ -1,6 +1,6 @@
 """
-Postgres Repository 구현.
-SQLAlchemy 2.x Session 기반 INSERT/SELECT.
+Postgres 기반 repository 구현체 모음이다.
+DTO를 SQLAlchemy ORM으로 변환해 insert, upsert, query를 수행한다.
 """
 
 from __future__ import annotations

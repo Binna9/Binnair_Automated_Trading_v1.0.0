@@ -1,6 +1,6 @@
 """
-Binance USD-M Futures REST API 어댑터.
-진입 주문 + TP/SL 보호 주문(OCO 유사) 등록 지원.
+Binance USD-M Futures REST API 어댑터다.
+테스트넷/실거래 선물 주문, 잔고, 포지션, TP/SL 보호 주문 조회와 실행을 담당한다.
 """
 
 from __future__ import annotations
@@ -62,6 +62,21 @@ class BinanceFuturesAdapter(ExchangeAdapter):
     @property
     def manages_exit_orders(self) -> bool:
         return True
+
+    def get_available_balance(self, asset: str = "USDT") -> float:
+        """Futures 계정의 주문 가능 잔고(availableBalance)를 조회한다."""
+        try:
+            data = self._request("GET", "/fapi/v2/balance")
+        except httpx.HTTPStatusError as e:
+            logger.warning("Binance futures balance fetch failed: %s", e)
+            return 0.0
+        if not isinstance(data, list):
+            return 0.0
+        target = asset.upper()
+        for row in data:
+            if str(row.get("asset", "")).upper() == target:
+                return float(row.get("availableBalance", 0) or 0.0)
+        return 0.0
 
     def _request(
         self,

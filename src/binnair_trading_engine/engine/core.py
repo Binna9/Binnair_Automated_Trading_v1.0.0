@@ -1,6 +1,6 @@
 """
-자동매매 엔진 코어.
-market snapshot -> signal evaluation -> risk check -> order -> execution -> position/audit
+자동매매 한 사이클의 오케스트레이션을 담당한다.
+시세 입력부터 예측, 시그널 정책, 전략, 리스크, 주문, 포지션 저장까지 연결한다.
 """
 
 from __future__ import annotations

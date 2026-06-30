@@ -1,7 +1,6 @@
 """
-TP/SL ExitManager: 포지션 보유 중 가격 도달 여부로 청산 의도 생성.
-predictor/반대신호 기반 exit 없음. 오직 TP/SL 가격 도달만 판단.
-초기 버전: partial exit 없음, trailing stop 없음.
+보유 포지션의 TP/SL 청산 조건을 판단한다.
+가격이 목표가 또는 손절가에 도달하면 reduce-only 청산 의도를 만든다.
 """
 from __future__ import annotations
 

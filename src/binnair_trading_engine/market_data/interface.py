@@ -1,4 +1,7 @@
-"""시세 수신 인터페이스."""
+"""
+시세 공급자 인터페이스를 정의한다.
+엔진이 provider 구현체와 무관하게 MarketSnapshot을 받을 수 있게 한다.
+"""
 
 from __future__ import annotations
 

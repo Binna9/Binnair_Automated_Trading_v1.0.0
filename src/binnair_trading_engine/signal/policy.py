@@ -1,4 +1,7 @@
-"""모델 시그널을 주문 가능한 의사결정으로 필터링한다."""
+"""
+모델 시그널을 주문 가능한 정책 신호로 필터링한다.
+심볼별 최근 N개 BUY/HOLD/SELL 연속성을 기준으로 진입과 청산을 허용한다.
+"""
 from __future__ import annotations
 
 from collections import defaultdict, deque

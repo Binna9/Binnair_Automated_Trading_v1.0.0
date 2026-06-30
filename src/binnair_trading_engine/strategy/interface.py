@@ -1,4 +1,7 @@
-"""시그널 처리 및 주문 의사결정 인터페이스."""
+"""
+전략 공통 인터페이스를 정의한다.
+Signal과 Prediction을 주문 의도 OrderIntent로 변환하는 계약을 제공한다.
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """
-Repository 인터페이스.
-Persistence 추상화. 구현체는 infra 레이어에서 주입.
+Persistence repository Protocol을 정의한다.
+각 테이블 repository가 제공해야 할 create/query 계약을 명시한다.
 """
 from __future__ import annotations
 

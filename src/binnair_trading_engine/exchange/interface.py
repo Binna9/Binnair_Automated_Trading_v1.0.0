@@ -1,4 +1,7 @@
-"""거래소 어댑터 인터페이스."""
+"""
+거래소 어댑터 공통 인터페이스를 정의한다.
+주문 실행, 포지션 조회, 잔고 조회, 보호 주문 등록 계약을 제공한다.
+"""
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -36,6 +39,15 @@ class ExchangeAdapter(ABC):
             position_side=intent.position_side,
         )
         return self.place_order(order)
+
+    def get_available_balance(self, asset: str = "USDT") -> float:
+        """
+        주문 가능 잔고 조회.
+
+        실거래/테스트넷 어댑터는 거래소의 available balance를 반환한다.
+        미지원 어댑터는 0.0을 반환하여 sizing 단계에서 주문을 차단하게 한다.
+        """
+        return 0.0
 
     @abstractmethod
     def place_order(self, order: Order) -> Order:

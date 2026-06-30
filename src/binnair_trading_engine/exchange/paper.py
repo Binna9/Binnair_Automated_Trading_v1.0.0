@@ -1,4 +1,7 @@
-"""종이거래(Paper Trading) 거래소 어댑터."""
+"""
+실제 거래소 API 없이 주문 체결과 포지션을 메모리에서 시뮬레이션한다.
+테스트와 로컬 검증에서 ExchangeAdapter 대체 구현으로 사용한다.
+"""
 
 import uuid
 from datetime import datetime
@@ -18,9 +21,13 @@ from binnair_trading_engine.exchange.interface import ExchangeAdapter
 class PaperExchangeAdapter(ExchangeAdapter):
     """실제 API 없이 메모리 내 시뮬레이션."""
 
-    def __init__(self) -> None:
+    def __init__(self, available_balance: float = 0.0) -> None:
         self._positions: dict[str, Position] = {}
         self._orders: dict[str, Order] = {}
+        self._available_balance = max(0.0, float(available_balance))
+
+    def get_available_balance(self, asset: str = "USDT") -> float:
+        return self._available_balance
 
     def place_order(self, order: Order) -> Order:
         """종이거래: Market 주문 즉시 체결 시뮬레이션."""

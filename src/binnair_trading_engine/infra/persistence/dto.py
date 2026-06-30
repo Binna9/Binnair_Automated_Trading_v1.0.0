@@ -1,6 +1,6 @@
 """
-Persistence DTO (Data Transfer Object).
-Repository 입력/출력용. Domain model과 분리.
+Repository 입출력용 DTO를 정의한다.
+도메인 객체와 DB ORM 모델 사이의 저장 요청 데이터를 명확히 분리한다.
 """
 from __future__ import annotations
 

@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """
-Binance OHLCV 캔들을 가져와 ohlcv_candle 테이블에 저장한다.
-
-일회성 백필:
-  CONFIG_PATH=config/config.yaml python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 500
-
-상시 적재:
-  CONFIG_PATH=config/config.yaml python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 2 --loop
+Binance OHLCV 캔들을 조회해 ohlcv_candle 테이블에 upsert한다.
+TimesFM 입력 히스토리를 백필하거나 상시 적재하는 운영 스크립트다.
 """
 from __future__ import annotations
 

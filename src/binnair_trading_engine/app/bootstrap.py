@@ -1,4 +1,7 @@
-"""엔진 부트스트랩: 설정 로드, 의존성 주입, 엔진 인스턴스 생성."""
+"""
+설정값을 읽어 자동매매 엔진의 의존성을 조립한다.
+exchange, predictor, strategy, risk, storage, signal policy를 생성해 TradingEngine에 주입한다.
+"""
 
 from __future__ import annotations
 
@@ -41,10 +44,10 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
     exchange = create_exchange(config)
     price_history_provider = create_price_history_provider(config)
     predictor = create_predictor(config, price_history_provider=price_history_provider)
-    risk = create_risk_checker(config)
+    risk = create_risk_checker(config, exchange=exchange)
     storage = create_storage(config)
     state_manager = create_state_manager(config)
-    strategy = create_strategy(config)
+    strategy = create_strategy(config, exchange=exchange)
     position_manager = PositionManager(run_id=rc.run_id)
     exit_manager = ExitManager()
     signal_policy = ConsecutiveSignalPolicy(

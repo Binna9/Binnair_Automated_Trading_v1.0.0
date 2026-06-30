@@ -1,7 +1,6 @@
 """
-Torch 기반 예측기.
-model artifact, scaler, feature order 메타데이터로 1회 로드 후 추론.
-torch.no_grad(), eval mode, lifecycle 분리.
+커스텀 PyTorch 모델 artifact 기반 예측기다.
+모델, scaler, feature order를 로드해 BUY/SELL/HOLD 확률을 계산한다.
 """
 from __future__ import annotations
 

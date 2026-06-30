@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-TimesFM 사전학습 가중치 다운로드/로컬 캐시 준비 스크립트.
-
-새 환경에서 자동매매 엔진을 실행하기 전에 한 번 실행해 두면,
-이후 TimesFM Predictor는 Hugging Face 로컬 캐시의 모델 파일을 재사용한다.
+TimesFM 사전학습 가중치를 Hugging Face 로컬 캐시에 준비한다.
+선택적으로 작은 forecast를 실행해 모델 로드와 추론 가능 여부를 확인한다.
 """
 from __future__ import annotations
 

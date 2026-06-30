@@ -1,4 +1,7 @@
-"""Repository 모듈."""
+"""
+Persistence repository 패키지다.
+인터페이스와 Postgres 구현체를 하위 모듈로 분리한다.
+"""
 
 from .interfaces import (
     AuditLogRepository,

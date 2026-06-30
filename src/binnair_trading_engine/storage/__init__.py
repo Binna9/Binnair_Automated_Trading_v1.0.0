@@ -1,4 +1,7 @@
-"""스토리지 레이어 (order/signal/position/trade/audit)."""
+"""
+엔진 저장 레이어 factory를 제공한다.
+설정에 따라 메모리 저장소 또는 Postgres DB 저장소를 생성한다.
+"""
 
 from .interface import (
     OrderStore,

@@ -1,15 +1,7 @@
 #!/usr/bin/env python3
 """
-MVP 검증: 진입/보유/TP/SL 청산 시나리오.
-
-시나리오:
-1. 포지션 없음 + BUY → 진입, 포지션 생성, TP/SL 저장
-2. 포지션 보유 + 가격 TP/SL 범위 안 → 주문 없음, 포지션 유지
-3. 포지션 보유 + TP 도달 → SELL 청산, 포지션 CLOSED
-4. 포지션 보유 + SL 도달 → SELL 청산, 포지션 CLOSED
-5. 포지션 보유 + predictor SELL → 무시 (청산 안 함)
-
-실행: CONFIG_PATH=config/config.yaml python scripts/verify_mvp.py
+엔진의 핵심 매매 흐름을 시나리오로 검증한다.
+진입, TP/SL 청산, 시그널 정책, DB 저장 결과를 함께 확인한다.
 """
 from __future__ import annotations
 
@@ -31,6 +23,8 @@ from binnair_trading_engine.infra.persistence.session import (
     get_storage_schema,
 )
 from binnair_trading_engine.predictor import DummyPredictor
+from binnair_trading_engine.risk.sizing import PercentEquitySizingPolicy
+from binnair_trading_engine.strategy import PassthroughStrategy
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -174,6 +168,14 @@ def main() -> int:
         feature_set_version=engine._ctx.feature_set_version,
     )
     engine._position_manager._run_id = verify_run_id
+    engine._strategy = PassthroughStrategy(
+        tp_pct=engine._config.trade_rules.tp_pct,
+        sl_pct=engine._config.trade_rules.sl_pct,
+        sizing_policy=PercentEquitySizingPolicy(engine._config.sizing),
+        exchange=engine._exchange,
+        quote_asset=engine._config.sizing.quote_asset,
+        fallback_equity_usdt=100.0,
+    )
 
     _clear_open_positions_for_verify(SYMBOL)
     engine.start()

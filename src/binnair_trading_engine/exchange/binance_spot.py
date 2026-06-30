@@ -1,6 +1,6 @@
 """
-Binance Spot REST API 어댑터.
-실거래 주문/조회. HMAC SHA256 서명.
+Binance Spot REST API 어댑터다.
+현물 주문, 취소, 주문 상태, 체결 내역 조회를 담당한다.
 """
 
 from __future__ import annotations

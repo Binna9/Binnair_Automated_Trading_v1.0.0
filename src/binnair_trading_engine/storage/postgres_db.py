@@ -1,5 +1,6 @@
-"""PostgreSQL 실제 DB 연동 스토리지.
-infra persistence repository 사용.
+"""
+실제 Postgres persistence를 사용하는 저장 레이어다.
+도메인 객체를 DTO로 변환해 repository에 저장한다.
 """
 
 from __future__ import annotations

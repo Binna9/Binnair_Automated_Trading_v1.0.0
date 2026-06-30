@@ -1,4 +1,7 @@
-"""시세 수신 모듈."""
+"""
+시세 데이터 패키지 공개 API다.
+실시간 ticker provider와 TimesFM용 가격 히스토리 provider 팩토리를 제공한다.
+"""
 
 from binnair_trading_engine.market_data.binance_rest import BinanceRestMarketData
 from binnair_trading_engine.market_data.history import (

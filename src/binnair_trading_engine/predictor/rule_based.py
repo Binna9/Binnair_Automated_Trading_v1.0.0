@@ -1,6 +1,6 @@
 """
-Rule-based 예측기 스켈레톤.
-간단한 규칙(가격 임계값 등) 기반 BUY/SELL/HOLD.
+가격 임계값 기반의 단순 예측기다.
+테스트나 비교용으로 현재 가격을 규칙에 매핑해 시그널을 만든다.
 """
 from __future__ import annotations
 
