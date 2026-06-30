@@ -125,9 +125,11 @@ src/binnair_trading_engine/
 └── api/                    # (옵션) 최소 API
 
 scripts/
-├── init_db.py             # DB 테이블 생성 및 position_snapshot migration
-├── ingest_ohlcv.py        # Binance OHLCV 캔들 적재 (TimesFM 입력 히스토리)
-└── verify_mvp.py          # MVP 검증 (진입→TP/SL 청산, DB 기록 검증)
+├── init_db.py                    # DB 테이블 생성 및 position_snapshot migration
+├── ingest_ohlcv.py               # Binance OHLCV 캔들 적재 (TimesFM 입력 히스토리)
+├── run_engine.py                 # OHLCV 적재 + 매매 엔진 한 번에 실행
+├── verify_testnet_connection.py  # 테스트넷/DB/시세 연결 점검
+└── download_timesfm_weights.py   # TimesFM 가중치 다운로드
 
 config/
 └── config.yaml            # 설정 (storage.backend=postgres 필요 시 직접 생성)
@@ -168,10 +170,16 @@ python scripts/init_db.py
 python scripts/init_db.py --drop
 ```
 
-### MVP 검증 (진입 → TP/SL 청산)
+### 연결 점검 (테스트넷/DB/시세)
 
 ```bash
-CONFIG_PATH=config/config.yaml python scripts/verify_mvp.py
+.venv/bin/python scripts/verify_testnet_connection.py -c config/config.yaml
+```
+
+### 자동매매 실행 (OHLCV 적재 + 엔진)
+
+```bash
+.venv/bin/python scripts/run_engine.py
 ```
 
 ### OHLCV 캔들 적재 (TimesFM 입력 히스토리)

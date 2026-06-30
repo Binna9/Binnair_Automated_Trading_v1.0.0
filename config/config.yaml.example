@@ -1,89 +1,173 @@
 # BinnAIR testnet configuration example.
 # 실제 실행 시 이 파일을 config/config.yaml로 복사하고 API 키/DB 비밀번호를 채우세요.
+#
+# 실행:
+#   .venv/bin/python scripts/run_engine.py
+#   (OHLCV 백필 + ingest loop + 매매 엔진을 한 번에 실행)
 
+# ---------------------------------------------------------------------------
+# run_context: 엔진 실행 이력·감사 로그에 남길 식별 정보
+# DB의 engine_run, signal_event, order_execution 등에 run_id/strategy_id로 기록된다.
+# ---------------------------------------------------------------------------
 run_context:
+  # 이번 실행 세션의 고유 ID. 재시작할 때마다 바꾸면 이력 분리가 쉽다.
   run_id: "testnet_timesfm_run"
+  # 사용 중인 전략 이름. DB 조회·로그 필터링에 사용.
   strategy_id: "timesfm_consecutive_long_only"
+  # 예측 모델 버전 태그. TimesFM 가중치 식별용.
   model_version: "timesfm-2.5-200m"
+  # 입력 피처 세트 버전. OHLCV close 히스토리 구성 방식 식별용.
   feature_set_version: "price-history-v1"
+  # 엔진 소프트웨어 버전.
   version: "1.0.0"
+  # 사용자 식별자. 멀티 유저 운영 시 이력 분리용.
   user_id: "default"
 
+# ---------------------------------------------------------------------------
+# market_data: 현재가(ticker) 폴링 설정
+# TimesFM 입력용 OHLCV는 scripts/ingest_ohlcv.py가 DB에 별도 적재한다.
+# ---------------------------------------------------------------------------
 market_data:
+  # true: Binance REST로 현재가를 주기적으로 조회해 run_cycle 실행.
+  # false: 외부에서 snapshot을 넣지 않는 한 heartbeat만 동작.
   enabled: true
+  # 시세 제공자. 현재 "binance_rest"만 지원.
   provider: "binance_rest"
+  # 거래·예측 대상 심볼. ingest_ohlcv.py --symbol 과 동일하게 맞출 것.
   symbol: "BTCUSDT"
-  # 1m OHLCV 기반 TimesFM 판단과 맞추려면 엔진 평가 주기도 60초 권장.
+  # run_cycle 실행 간격(초). 1m OHLCV + TimesFM이면 60초 권장.
   poll_interval_seconds: 60.0
+  # Binance REST API 베이스 URL. OHLCV 적재·현재가 조회 모두 여기 사용.
   base_url: "https://api.binance.com"
+  # HTTP 요청 타임아웃(초).
   timeout: 10.0
 
+# ---------------------------------------------------------------------------
+# exchange: 주문·잔고·포지션 조회 대상 거래소
+# ---------------------------------------------------------------------------
 exchange:
+  # 거래소 어댑터 타입. 현재 "binance"만 지원.
   adapter_type: "binance"
+  # "spot"(현물) | "futures"(USD-M 선물). 테스트넷 선물은 futures.
   market_type: "futures"
+  # true: 로컬 PaperExchange(모의). false: 아래 API로 실제/testnet 주문.
   paper_mode: false
-  # Binance Futures Testnet URL.
+  # Binance Futures Testnet URL. 실거래는 https://fapi.binance.com
   base_url: "https://testnet.binancefuture.com"
+  # Binance API Key. paper_mode=false 일 때 필수.
   api_key: "PUT_TESTNET_API_KEY_HERE"
+  # Binance API Secret. paper_mode=false 일 때 필수.
   api_secret: "PUT_TESTNET_API_SECRET_HERE"
+  # 선물 레버리지 배수. sizing.max_leverage 이하로 맞추는 것을 권장.
   leverage: 2
+  # "ISOLATED"(격리 마진) | "CROSSED"(교차 마진).
   margin_type: "ISOLATED"
+  # "ONE_WAY"(단방향) | "HEDGE"(양방향). 현재 엔진은 ONE_WAY 기준.
   position_side_mode: "ONE_WAY"
-  # false면 엔진이 로컬 TP/SL 청산을 처리한다. true면 거래소 reduceOnly 보호주문을 사용한다.
+  # true: 진입 직후 거래소에 TP/SL reduceOnly 보호주문 등록.
+  # false: 엔진이 현재가를 보며 로컬에서 TP/SL·MODEL_SELL 청산 처리.
   oco_enabled: false
 
+# ---------------------------------------------------------------------------
+# storage: 시그널·주문·포지션·OHLCV 영속화 DB
+# ---------------------------------------------------------------------------
 storage:
+  # "postgres": PostgreSQL 저장 | "memory": 프로세스 메모리(재시작 시 유실).
   backend: "postgres"
   host: "localhost"
   port: 5432
   dbname: "binnair"
   user: "binnair"
   password: "PUT_DB_PASSWORD_HERE"
+  # PostgreSQL 스키마. init_db.py로 생성한 trade 스키마명과 일치해야 함.
   schema: "trade"
 
+# ---------------------------------------------------------------------------
+# trade_rules: 진입 후 TP/SL 가격 계산 규칙
+# sl_pct는 risk/sizing의 손절 거리 계산에도 사용된다.
+# ---------------------------------------------------------------------------
 trade_rules:
-  # TP/SL은 진입가 기준 비율이다. sl_pct는 sizing의 손절 거리 계산에도 사용된다.
+  # 익절: 목표가 = 체결가 × (1 + tp_pct). 0.01 = +1%
   tp_pct: 0.01
+  # 손절: 손절가 = 체결가 × (1 - sl_pct). 0.005 = -0.5%
   sl_pct: 0.005
 
+# ---------------------------------------------------------------------------
+# sizing: 지갑 잔고 기반 주문 수량 계산
+# exchange.get_available_balance()로 조회한 USDT 잔고를 기준으로 한다.
+# ---------------------------------------------------------------------------
 sizing:
+  # 잔고·명목 금액 계산 기준 자산. USD-M Futures는 USDT.
   quote_asset: "USDT"
-  # 한 번의 거래에서 감수할 최대 손실 비율. 0.005 = 지갑 잔고의 0.5%.
+  # 1회 거래 최대 허용 손실 비율. 0.005 = 잔고의 0.5%.
   risk_per_trade_pct: 0.005
-  # 한 포지션에 투입할 최대 명목 금액 비율. 0.20 = 지갑 잔고의 20%.
+  # 한 포지션 최대 명목 금액 비율. 0.20 = 잔고의 20%까지.
   max_position_notional_pct: 0.20
-  # 거래소 최소 주문 금액 미달을 막기 위한 하한.
+  # 이 USDT 금액 미만 주문은 거래소 최소 주문 미달 가능성으로 차단.
   min_order_notional_usdt: 5.0
-  # sizing 계산상 허용하는 레버리지 상한. exchange.leverage보다 크게 잡지 않는 것을 권장.
+  # sizing 계산상 허용 레버리지 상한. exchange.leverage와 맞출 것.
   max_leverage: 2
-  # 테스트넷 잔고 조회 실패 시 사용할 비상값. 0이면 주문을 생성하지 않는다.
+  # 잔고 조회 실패 시 비상 사용 값. 0이면 주문 생성하지 않음.
   fallback_equity_usdt: 0.0
 
+# ---------------------------------------------------------------------------
+# risk: 주문 직전 최종 검문 (DefaultRiskChecker)
+# sizing과 중복되는 항목은 이중 안전장치 역할.
+# ---------------------------------------------------------------------------
 risk:
-  # 주문 직전 최종 검문. sizing과 같은 값으로 두면 이중 안전장치가 된다.
+  # 지갑 대비 최대 포지션 명목 금액 비율. sizing과 동일 값 권장.
   max_position_notional_pct: 0.20
-  # 하루 손실 제한. 0.03 = 지갑 잔고의 3% 손실 시 신규 주문 차단.
+  # 일일 손실 한도. 0.03 = 잔고의 3% 손실 시 신규 주문 차단.
   daily_loss_limit_pct: 0.03
-  # 같은 심볼/같은 방향 주문을 막는 최소 간격.
+  # 동일 심볼·동일 방향 중복 주문 최소 간격(초).
   duplicate_order_window_seconds: 180
 
+# ---------------------------------------------------------------------------
+# signal_policy: TimesFM raw 시그널 → 실제 주문 허용 여부 필터
+# ---------------------------------------------------------------------------
 signal_policy:
+  # 같은 방향 시그널이 연속 N회일 때만 진입/청산 허용. 3 = 3연속 BUY/SELL.
   consecutive_required: 3
+  # "long_only": BUY N연속→롱 진입, SELL N연속→롱 청산, HOLD→유지.
   mode: "long_only"
 
+# 예측기 종류. 현재 "timesfm" | "dummy" | "rule_based" 지원. 운영은 timesfm.
 predictor_type: "timesfm"
+
+# ---------------------------------------------------------------------------
+# predictor_config.timesfm: TimesFM zero-shot 예측 파라미터
+# ---------------------------------------------------------------------------
 predictor_config:
   timesfm:
+    # Hugging Face 모델 ID. download_timesfm_weights.py로 미리 캐시 권장.
     model_id: "google/timesfm-2.5-200m-pytorch"
+    # true: DB ohlcv_candle close 히스토리 사용. false: 엔진 메모리 히스토리.
     use_ohlcv_history: true
+    # DB에서 읽을 캔들 간격. ingest_ohlcv.py --timeframe 과 동일하게.
     timeframe: "1m"
+    # 모델에 넣을 close 개수 상한. 많을수록 컨텍스트는 길어지나 지연·부하 증가.
     context_length: 128
+    # 이 개수 미만이면 예측 skip(HOLD). TimesFM 최소 입력 길이.
     min_context: 64
+    # 한 번에 예측할 미래 스텝 수.
     horizon: 3
+    # horizon 중 BUY/SELL 판단에 쓸 인덱스. -1 = 마지막 스텝.
     forecast_index: -1
+    # 수수료율. 예측 수익률 계산 시 차감.
     fee_rate: 0.0004
+    # 슬리피지 가정. 예측 수익률 계산 시 차감.
     slippage_rate: 0.0005
+    # BUY/SELL 임계값 여유 마진. 노이즈 필터용.
     safety_margin: 0.001
 
+# true: risk.check() 활성화. false: 리스크 검문 없이 주문(디버그용, 비권장).
 risk_enabled: true
+
+# 엔진 로컬 상태 파일 경로. 재시작 시 보조 복구용.
 state_persist_path: "./data/state/engine_state.json"
+
+# (선택) 로그 레벨: DEBUG | INFO | WARNING | ERROR
+# log_level: "INFO"
+
+# (선택) true면 BUY/SELL 시에만 model_inference_event DB 저장. 기본 false(매 tick 저장).
+# persist_model_inference: false

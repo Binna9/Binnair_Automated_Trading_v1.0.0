@@ -2,28 +2,39 @@
 """
 Binance OHLCV 캔들을 조회해 ohlcv_candle 테이블에 upsert한다.
 TimesFM 입력 히스토리를 백필하거나 상시 적재하는 운영 스크립트다.
+
+보통은 run_engine.py가 이 스크립트를 subprocess로 호출한다.
+단독 실행 예:
+  CONFIG_PATH=config/config.yaml .venv/bin/python scripts/ingest_ohlcv.py --loop
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from binnair_trading_engine.infra.persistence.dto import OhlcvCandleCreate
-from binnair_trading_engine.infra.persistence.repositories.postgres import (
-    PostgresRepositoryFactory,
+from binnair_trading_engine.market_data.ohlcv_ingest import (
+    ingest_ohlcv_once,
+    run_ohlcv_ingest_loop,
 )
-from binnair_trading_engine.market_data.binance_rest import BinanceRestMarketData
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s | %(message)s",
 )
 logger = logging.getLogger("ingest_ohlcv")
+
+
+def _ensure_config_path() -> None:
+    if os.environ.get("CONFIG_PATH"):
+        return
+    default_config = Path(__file__).resolve().parent.parent / "config" / "config.yaml"
+    if default_config.exists():
+        os.environ["CONFIG_PATH"] = str(default_config)
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,60 +63,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def ingest_once(
-    provider: BinanceRestMarketData,
-    repos: PostgresRepositoryFactory,
-    symbol: str,
-    timeframe: str,
-    limit: int,
-) -> int:
-    candles = provider.fetch_klines(symbol=symbol, interval=timeframe, limit=limit)
-    dtos = [
-        OhlcvCandleCreate(
-            symbol=c.symbol,
-            timeframe=c.timeframe,
-            open_time=c.open_time,
-            close_time=c.close_time,
-            open=c.open,
-            high=c.high,
-            low=c.low,
-            close=c.close,
-            volume=c.volume,
-            quote_volume=c.quote_volume,
-            trade_count=c.trade_count,
-        )
-        for c in candles
-    ]
-    affected = repos.ohlcv_candle.upsert_many(dtos)
-    logger.info(
-        "OHLCV upsert complete: symbol=%s timeframe=%s fetched=%d affected=%d",
-        symbol,
-        timeframe,
-        len(candles),
-        affected,
-    )
-    return affected
-
-
 def main() -> int:
+    _ensure_config_path()
     args = parse_args()
-    provider = BinanceRestMarketData(base_url=args.base_url, timeout=args.timeout)
-    repos = PostgresRepositoryFactory()
 
     if not args.loop:
-        ingest_once(provider, repos, args.symbol, args.timeframe, args.limit)
+        ingest_ohlcv_once(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            limit=args.limit,
+            base_url=args.base_url,
+            timeout=args.timeout,
+        )
         return 0
 
-    logger.info(
-        "Starting OHLCV ingestion loop: symbol=%s timeframe=%s interval=%.1fs",
-        args.symbol,
-        args.timeframe,
-        args.poll_interval,
-    )
     try:
-        while True:
-            ingest_once(provider, repos, args.symbol, args.timeframe, args.limit)
-            time.sleep(args.poll_interval)
+        run_ohlcv_ingest_loop(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            limit=args.limit,
+            poll_interval=args.poll_interval,
+            base_url=args.base_url,
+            timeout=args.timeout,
+        )
     except KeyboardInterrupt:
         logger.info("OHLCV ingestion stopped")
     return 0

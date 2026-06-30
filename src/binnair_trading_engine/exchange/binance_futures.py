@@ -88,6 +88,7 @@ class BinanceFuturesAdapter(ExchangeAdapter):
         params = dict(params) if params else {}
         if signed:
             params["timestamp"] = int(time.time() * 1000)
+            params.setdefault("recvWindow", 5000)
             query = urlencode(sorted(params.items()))
             params["signature"] = _sign(query, self._api_secret)
             query = urlencode(sorted(params.items()))
