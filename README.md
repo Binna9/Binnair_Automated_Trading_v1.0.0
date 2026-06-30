@@ -21,7 +21,7 @@
 
 | 영역 | 구현 내용 | 미구현 |
 |------|-----------|--------|
-| **Predictor** | Dummy, RuleBased, TorchPredictor | TorchPredictor: DummyFeatureVectorProvider만 연결 (실제 피처 공학 미구현) |
+| **Predictor** | TimesFM, Dummy, RuleBased | TimesFM은 DB OHLCV close 히스토리 기반 zero-shot 예측 |
 | **Market Data** | Binance REST ticker/price 폴링 | WebSocket 구독 없음 |
 | **Exchange** | Paper, Binance Spot REST | Futures, WebSocket 주문 없음 |
 | **Storage** | memory / postgres 백엔드 | Redis, Alembic migration 없음 |
@@ -104,10 +104,7 @@ src/binnair_trading_engine/
 │   ├── interface.py       # Predictor
 │   ├── dummy.py           # DummyPredictor (테스트용)
 │   ├── rule_based.py      # RuleBasedPredictor (가격 규칙)
-│   ├── timesfm_predictor.py # TimesFM 기반 zero-shot 예측
-│   ├── torch_predictor.py # TorchPredictor (PyTorch)
-│   ├── artifact.py        # ModelArtifactMetadata
-│   └── feature_provider.py # FeatureVectorProvider
+│   └── timesfm_predictor.py # TimesFM 기반 zero-shot 예측
 ├── position/               # 포지션 관리
 │   └── manager.py         # PositionManager: open/close, restore_from_snapshot
 ├── risk/                   # 리스크 관리
@@ -149,7 +146,7 @@ config/
 | **exchange** | ExchangeAdapter. PaperExchangeAdapter / BinanceSpotAdapter |
 | **infra** | DB 모델, DTO, Repository. Postgres 연결 및 OHLCV/position_snapshot 등 테이블 CRUD |
 | **market_data** | MarketDataProvider, PriceHistoryProvider. Binance REST 시세/OHLCV 조회 |
-| **predictor** | Predictor. TimesFM, DummyPredictor, RuleBasedPredictor, TorchPredictor |
+| **predictor** | Predictor. 운영 기본은 TimesFM, Dummy/RuleBased는 검증용 |
 | **position** | PositionManager: open/close, 미실현 PnL, DB 스냅샷 복구 |
 | **risk** | RiskChecker: check(intent, ctx) → passed/rejected |
 | **signal** | TimesFM BUY/HOLD/SELL을 주문 가능한 정책 신호로 필터링 |
@@ -262,7 +259,7 @@ signal_policy:
   consecutive_required: 3
   mode: "long_only"   # BUY 3회 연속 진입, SELL 3회 연속 롱 청산
 
-predictor_type: "timesfm"   # "dummy" | "rule_based" | "torch" | "timesfm"
+predictor_type: "timesfm"   # 운영 기본. "dummy" | "rule_based"는 검증용
 risk_enabled: true
 
 predictor_config:

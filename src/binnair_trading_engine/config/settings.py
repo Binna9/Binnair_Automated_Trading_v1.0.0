@@ -106,17 +106,6 @@ class SignalPolicyConfig:
 
 
 @dataclass
-class PredictorTorchConfig:
-    """TorchPredictor 아티팩트 설정."""
-    model_path: str = ""
-    scaler_path: str = ""
-    feature_order_path: str = ""
-    model_version: str = ""
-    feature_set_version: str = ""
-    scaler_version: str = ""
-
-
-@dataclass
 class PredictorTimesFMConfig:
     """TimesFM 사전학습 모델 예측기 설정."""
     model_id: str = "google/timesfm-2.5-200m-pytorch"
@@ -145,7 +134,6 @@ class EngineConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     signal_policy: SignalPolicyConfig = field(default_factory=SignalPolicyConfig)
     predictor_type: str = "timesfm"
-    predictor_config: PredictorTorchConfig | None = None
     predictor_timesfm_config: PredictorTimesFMConfig | None = None
     risk_enabled: bool = True
     state_persist_path: Path | None = None
@@ -266,15 +254,6 @@ class EngineConfig:
             mode=sp_cfg_data.get("mode", default_signal_policy.mode),
         )
         pc = data.get("predictor_config") or {}
-        tor = pc.get("torch") or {}
-        pred_torch = PredictorTorchConfig(
-            model_path=tor.get("model_path", ""),
-            scaler_path=tor.get("scaler_path", ""),
-            feature_order_path=tor.get("feature_order_path", ""),
-            model_version=tor.get("model_version", ""),
-            feature_set_version=tor.get("feature_set_version", ""),
-            scaler_version=tor.get("scaler_version", ""),
-        ) if tor else None
         tfm = pc.get("timesfm") or {}
         pred_timesfm = PredictorTimesFMConfig(
             model_id=tfm.get("model_id", PredictorTimesFMConfig.model_id),
@@ -301,7 +280,6 @@ class EngineConfig:
             risk=risk_cfg,
             signal_policy=signal_policy_cfg,
             predictor_type=data.get("predictor_type", "timesfm"),
-            predictor_config=pred_torch,
             predictor_timesfm_config=pred_timesfm,
             risk_enabled=data.get("risk_enabled", True),
             state_persist_path=Path(sp) if sp else None,
