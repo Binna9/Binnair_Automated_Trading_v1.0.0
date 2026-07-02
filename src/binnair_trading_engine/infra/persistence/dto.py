@@ -4,7 +4,7 @@ Repository 입출력용 DTO를 정의한다.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -25,6 +25,7 @@ class EngineRunDTO:
     config_snapshot: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    user_id: str = "default"
     id: int | None = None
 
 
@@ -56,6 +57,7 @@ class SignalEventDTO:
     event_at: datetime
     timeframe: str | None = None
     model_version: str | None = None
+    user_id: str = "default"
     created_at: datetime | None = None
     id: int | None = None
 
@@ -79,6 +81,7 @@ class OrderRequestDTO:
     requested_at: datetime
     order_id: str | None = None
     client_order_id: str | None = None
+    user_id: str = "default"
     created_at: datetime | None = None
     id: int | None = None
 
@@ -101,6 +104,7 @@ class OrderExecutionDTO:
     paper_mode: bool
     executed_at: datetime
     order_request_id: int | None = None
+    user_id: str = "default"
     created_at: datetime | None = None
     id: int | None = None
 
@@ -117,6 +121,16 @@ class PositionSnapshotDTO:
     unrealized_pnl: float
     paper_mode: bool
     snapshot_at: datetime
+    side: str | None = None
+    tp_price: float | None = None
+    sl_price: float | None = None
+    status: str | None = None
+    opened_at: datetime | None = None
+    closed_at: datetime | None = None
+    realized_pnl: float | None = None
+    exit_reason: str | None = None
+    exit_price: float | None = None
+    user_id: str = "default"
     created_at: datetime | None = None
     id: int | None = None
 
@@ -150,6 +164,7 @@ class ModelInferenceEventDTO:
     output_prediction: dict[str, Any]
     paper_mode: bool
     inference_at: datetime
+    user_id: str = "default"
     created_at: datetime | None = None
     id: int | None = None
 
@@ -163,6 +178,7 @@ class AuditLogDTO:
     data: dict[str, Any]
     paper_mode: bool
     correlation_id: str = ""
+    user_id: str = "default"
     created_at: datetime | None = None
     id: int | None = None
 

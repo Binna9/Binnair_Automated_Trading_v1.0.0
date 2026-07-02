@@ -158,7 +158,7 @@ config/
 
 ---
 
-## 실행
+## 실행[PLAY]
 
 ### DB 초기화 (Postgres 사용 시)
 
@@ -168,12 +168,6 @@ python scripts/init_db.py
 
 # 기존 테이블 삭제 후 재생성
 python scripts/init_db.py --drop
-```
-
-### 연결 점검 (테스트넷/DB/시세)
-
-```bash
-.venv/bin/python scripts/verify_testnet_connection.py -c config/config.yaml
 ```
 
 ### 자동매매 실행 (OHLCV 적재 + 엔진)
@@ -206,78 +200,6 @@ DB 히스토리가 `min_context`보다 부족하면 엔진 tick으로 쌓은 in-
 ```bash
 pip install -e .
 binnair-engine -c config/config.yaml
-```
-
----
-
-## 설정 (config.yaml)
-
-`config/config.yaml`이 없으면 `config/` 디렉터리를 만들고 아래 예시를 참고해 생성하세요.
-실행용 템플릿은 `config/config.yaml.example`에도 포함되어 있습니다.
-
-```yaml
-run_context:
-  run_id: "run_001"
-  strategy_id: "strategy_default"
-  model_version: "v1"
-  feature_set_version: "v1"
-  version: "1.0.0"
-  user_id: "default"   # 사용자별 이력 분리 (UUID 등, VARCHAR 36)
-
-market_data:
-  enabled: false   # true 시 Binance REST 시세 폴링
-  symbol: "BTCUSDT"
-  poll_interval_seconds: 5.0
-
-exchange:
-  market_type: "futures"   # "spot" | "futures"
-  paper_mode: true
-  leverage: 3
-  margin_type: "ISOLATED"  # ISOLATED | CROSSED
-  position_side_mode: "ONE_WAY"  # ONE_WAY | HEDGE
-  oco_enabled: true
-
-storage:
-  backend: "postgres"   # "memory" | "postgres"
-  host: "localhost"
-  port: 5432
-  dbname: "binnair_engine"
-  user: "postgres"
-  password: "***"
-  schema: "trade"
-
-trade_rules:
-  tp_pct: 0.02   # TP: 체결가 * (1 + tp_pct)
-  sl_pct: 0.01   # SL: 체결가 * (1 - sl_pct)
-
-sizing:
-  quote_asset: "USDT"
-  risk_per_trade_pct: 0.005        # 1회 거래 허용 손실: 지갑의 0.5%
-  max_position_notional_pct: 0.20  # 한 포지션 최대 명목 금액: 지갑의 20%
-  min_order_notional_usdt: 5.0
-  max_leverage: 2
-  fallback_equity_usdt: 0.0        # 잔고 조회 실패 시 0이면 주문 생성 안 함
-
-risk:
-  max_position_notional_pct: 0.20
-  daily_loss_limit_pct: 0.03       # 하루 손실 3% 초과 시 신규 주문 차단
-  duplicate_order_window_seconds: 180
-
-signal_policy:
-  consecutive_required: 3
-  mode: "long_only"   # BUY 3회 연속 진입, SELL 3회 연속 롱 청산
-
-predictor_type: "timesfm"   # 운영 기본. "dummy" | "rule_based"는 검증용
-risk_enabled: true
-
-predictor_config:
-  timesfm:
-    use_ohlcv_history: true
-    timeframe: "1m"
-    context_length: 128
-    min_context: 64
-    horizon: 3
-state_persist_path: "./data/state"
 ```
 
 ### TimesFM 3회 시그널 정책

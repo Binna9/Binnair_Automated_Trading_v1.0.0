@@ -171,3 +171,17 @@ state_persist_path: "./data/state/engine_state.json"
 
 # (선택) true면 BUY/SELL 시에만 model_inference_event DB 저장. 기본 false(매 tick 저장).
 # persist_model_inference: false
+
+# ---------------------------------------------------------------------------
+# api: 조회 API(FastAPI) 서버 설정 — scripts/run_api.py / binnair-api
+# 엔진과 별도 프로세스. storage(Postgres) 설정으로 DB 이력을 read-only 조회한다.
+# ---------------------------------------------------------------------------
+api:
+  # true: run_api.py로 API 서버 기동. false면 스크립트 즉시 종료.
+  enabled: true
+  # Postman/브라우저 접속 주소. 외부 접속 허용 시 "0.0.0.0"
+  host: "127.0.0.1"
+  port: 8000
+  # CORS 허용 Origin. 프론트 연동 시 ["http://localhost:3000"] 등으로 변경.
+  cors_origins:
+    - "*"

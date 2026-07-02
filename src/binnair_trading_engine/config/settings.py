@@ -123,6 +123,16 @@ class PredictorTimesFMConfig:
 
 
 @dataclass
+class ApiConfig:
+    """조회 API(FastAPI) 서버 설정."""
+
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8000
+    cors_origins: list[str] = field(default_factory=lambda: ["*"])
+
+
+@dataclass
 class EngineConfig:
     """엔진 전체 설정."""
     run_context: RunContext
@@ -139,6 +149,7 @@ class EngineConfig:
     state_persist_path: Path | None = None
     log_level: str = "INFO"
     persist_model_inference: bool = False  # BUY/SELL 시에만 model_inference_event 저장
+    api: ApiConfig = field(default_factory=ApiConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EngineConfig":
@@ -270,6 +281,17 @@ class EngineConfig:
             feature_set_version=tfm.get("feature_set_version", PredictorTimesFMConfig.feature_set_version),
         ) if tfm else None
         sp = data.get("state_persist_path")
+        api = data.get("api", {})
+        default_api = ApiConfig()
+        cors = api.get("cors_origins", default_api.cors_origins)
+        if isinstance(cors, str):
+            cors = [cors]
+        api_cfg = ApiConfig(
+            enabled=bool(api.get("enabled", default_api.enabled)),
+            host=api.get("host", default_api.host),
+            port=int(api.get("port", default_api.port)),
+            cors_origins=list(cors) if cors else default_api.cors_origins,
+        )
         return cls(
             run_context=run_ctx,
             exchange=exc_cfg,
@@ -285,6 +307,7 @@ class EngineConfig:
             state_persist_path=Path(sp) if sp else None,
             log_level=data.get("log_level", "INFO"),
             persist_model_inference=data.get("persist_model_inference", False),
+            api=api_cfg,
         )
 
 
