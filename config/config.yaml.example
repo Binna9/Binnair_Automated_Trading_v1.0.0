@@ -163,6 +163,10 @@ predictor_config:
 # true: risk.check() 활성화. false: 리스크 검문 없이 주문(디버그용, 비권장).
 risk_enabled: true
 
+# true: Ctrl+C/SIGTERM 등 graceful 종료 시 열린 포지션을 시장가로 청산한다.
+# 프로세스가 판단을 멈추면 포지션도 함께 정리하는 것이 기본 동작.
+flatten_on_shutdown: true
+
 # 엔진 로컬 상태 파일 경로. 재시작 시 보조 복구용.
 state_persist_path: "./data/state/engine_state.json"
 

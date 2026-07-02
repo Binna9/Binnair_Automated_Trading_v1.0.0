@@ -149,6 +149,7 @@ class EngineConfig:
     state_persist_path: Path | None = None
     log_level: str = "INFO"
     persist_model_inference: bool = False  # BUY/SELL 시에만 model_inference_event 저장
+    flatten_on_shutdown: bool = True  # graceful 종료 시 열린 포지션 시장가 청산
     api: ApiConfig = field(default_factory=ApiConfig)
 
     @classmethod
@@ -307,6 +308,7 @@ class EngineConfig:
             state_persist_path=Path(sp) if sp else None,
             log_level=data.get("log_level", "INFO"),
             persist_model_inference=data.get("persist_model_inference", False),
+            flatten_on_shutdown=bool(data.get("flatten_on_shutdown", True)),
             api=api_cfg,
         )
 

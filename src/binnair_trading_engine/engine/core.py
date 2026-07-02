@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from binnair_trading_engine.config import EngineConfig
 from binnair_trading_engine.domain.models import (
@@ -67,6 +67,7 @@ class TradingEngine:
         self._position_manager = position_manager
         self._exit_manager = exit_manager
         self._signal_policy = signal_policy
+        self._shutdown_done = False
 
     def start(self) -> None:
         """엔진 시작: DB 포지션 복구, 상태 복구, engine_run 기록."""
@@ -108,10 +109,84 @@ class TradingEngine:
                 )
 
     def stop(self) -> None:
-        """엔진 종료: engine_run status 업데이트."""
+        """엔진 종료: 열린 포지션 청산(설정 시), engine_run status 업데이트."""
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
+
+        if self._config.flatten_on_shutdown:
+            try:
+                self._flatten_open_positions_on_shutdown()
+            except Exception:
+                logger.exception(
+                    "Failed to flatten positions on shutdown",
+                    extra={"run_id": self._ctx.run_id},
+                )
+
         self._storage.record_engine_stop(self._ctx.run_id, "stopped")
         self._state.stop()
         logger.info("Engine stopped", extra={"run_id": self._ctx.run_id})
+
+    def _flatten_open_positions_on_shutdown(self) -> None:
+        """graceful 종료 시 엔진이 관리 중인 OPEN 포지션을 시장가로 청산한다."""
+        run_id = self._ctx.run_id
+        corr_id = str(uuid.uuid4())
+        open_positions = self._position_manager.list_open_positions()
+        if not open_positions:
+            return
+
+        logger.info(
+            "Flattening open positions on shutdown",
+            extra={
+                "run_id": run_id,
+                "count": len(open_positions),
+                "correlation_id": corr_id,
+            },
+        )
+
+        for pos in open_positions:
+            price = self._resolve_shutdown_exit_price(pos.symbol, pos)
+            snapshot = MarketSnapshot(
+                symbol=pos.symbol,
+                price=price,
+                timestamp=datetime.now(timezone.utc),
+                run_id=run_id,
+                correlation_id=corr_id,
+            )
+            side = OrderSide.SELL if pos.is_long() else OrderSide.BUY
+            intent = OrderIntent(
+                symbol=pos.symbol,
+                side=side,
+                order_type=OrderType.MARKET,
+                quantity=pos.quantity,
+                price=None,
+                reduce_only=True,
+                position_side=pos.side,
+            )
+            self._submit_exit_order(
+                snapshot=snapshot,
+                pos=pos,
+                intent=intent,
+                exit_reason="SHUTDOWN",
+                run_id=run_id,
+                corr_id=corr_id,
+            )
+
+    def _resolve_shutdown_exit_price(self, symbol: str, pos: Position) -> float:
+        """종료 시 체결가 추정. ticker 조회 실패 시 거래소/포지션 진입가로 대체."""
+        from binnair_trading_engine.market_data.binance_rest import BinanceRestMarketData
+
+        md = self._config.market_data
+        provider = BinanceRestMarketData(base_url=md.base_url, timeout=md.timeout)
+        snap = provider.fetch_snapshot(symbol, run_id=self._ctx.run_id)
+        if snap is not None and snap.price > 0:
+            return snap.price
+
+        exch_pos = self._exchange.get_position(symbol)
+        if exch_pos is not None and exch_pos.avg_entry_price > 0:
+            return exch_pos.avg_entry_price
+
+        return pos.avg_entry_price
 
     def process_tick(self, snapshot: MarketSnapshot) -> None:
         """
