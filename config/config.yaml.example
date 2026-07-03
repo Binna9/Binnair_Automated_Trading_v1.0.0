@@ -117,6 +117,8 @@ sizing:
 risk:
   # 지갑 대비 최대 포지션 명목 금액 비율. sizing과 동일 값 권장.
   max_position_notional_pct: 0.20
+  # 심볼당 최대 수량 상한. 0=비활성 (XRP 등 저가 코인은 명목%만 적용).
+  max_position_qty: 0
   # 일일 손실 한도. 0.03 = 잔고의 3% 손실 시 신규 주문 차단.
   daily_loss_limit_pct: 0.03
   # 동일 심볼·동일 방향 중복 주문 최소 간격(초).

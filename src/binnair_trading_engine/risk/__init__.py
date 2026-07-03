@@ -23,6 +23,7 @@ def create_risk_checker(config, exchange=None) -> RiskChecker:
         return equity if equity > 0 else fallback_equity
 
     return DefaultRiskChecker(
+        max_position_qty=float(getattr(risk, "max_position_qty", 0.0)),
         max_position_notional_pct=getattr(risk, "max_position_notional_pct", 0.20),
         daily_loss_limit_pct=getattr(risk, "daily_loss_limit_pct", 0.03),
         duplicate_window_seconds=getattr(

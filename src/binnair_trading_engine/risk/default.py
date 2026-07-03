@@ -66,7 +66,7 @@ class DefaultRiskChecker(RiskChecker):
                 break
 
         new_qty = pos_qty + (intent.quantity if intent.side == OrderSide.BUY else -intent.quantity)
-        if abs(new_qty) > self._max_position_qty:
+        if self._max_position_qty > 0 and abs(new_qty) > self._max_position_qty:
             return RiskCheckResult(
                 passed=False,
                 reason=f"max_position: new_qty={new_qty:.2f} > {self._max_position_qty}",

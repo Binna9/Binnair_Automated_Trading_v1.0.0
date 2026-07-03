@@ -93,6 +93,7 @@ class RiskConfig:
     """주문 직전 최종 리스크 제한 설정."""
 
     max_position_notional_pct: float = 0.20  # 지갑 대비 최대 포지션 명목 금액 비율.
+    max_position_qty: float = 0.0  # 심볼당 최대 수량. 0=비활성 (XRP 등 저가 코인은 명목%만 사용).
     daily_loss_limit_pct: float = 0.03  # 하루 손실 제한. 0.03 = 지갑의 3% 손실 시 신규 주문 차단.
     duplicate_order_window_seconds: int = 180  # 동일 심볼/동일 방향 중복 주문 최소 간격.
 
@@ -253,6 +254,9 @@ class EngineConfig:
                     "duplicate_order_window_seconds",
                     default_risk.duplicate_order_window_seconds,
                 )
+            ),
+            max_position_qty=float(
+                risk.get("max_position_qty", default_risk.max_position_qty)
             ),
         )
         sp_cfg_data = data.get("signal_policy", {})

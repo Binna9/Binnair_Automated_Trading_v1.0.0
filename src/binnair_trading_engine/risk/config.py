@@ -3,8 +3,8 @@
 설정값이 없을 때 사용할 포지션/손실/중복 주문 제한 기본값을 제공한다.
 """
 
-# 최대 포지션 수량 (심볼당)
-DEFAULT_MAX_POSITION_QTY = 100.0
+# 최대 포지션 수량 (심볼당). 0 이하면 수량 상한 검사 비활성 (명목 금액 %만 사용).
+DEFAULT_MAX_POSITION_QTY = 0.0
 
 # 일손실 제한 (음수)
 DEFAULT_DAILY_LOSS_LIMIT = -1000.0
