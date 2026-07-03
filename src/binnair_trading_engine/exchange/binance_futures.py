@@ -78,6 +78,95 @@ class BinanceFuturesAdapter(ExchangeAdapter):
                 return float(row.get("availableBalance", 0) or 0.0)
         return 0.0
 
+    def fetch_wallet_snapshot(self) -> dict:
+        """모니터 API용 read-only 지갑·포지션 스냅샷."""
+        snapshot: dict = {
+            "market_type": "futures",
+            "base_url": self._base_url,
+            "ok": False,
+            "error": None,
+            "balances": [],
+            "account": {},
+            "positions": [],
+        }
+        try:
+            raw_balances = self._request("GET", "/fapi/v2/balance")
+            raw_account = self._request("GET", "/fapi/v2/account")
+            raw_positions = self._request("GET", "/fapi/v2/positionRisk")
+        except httpx.HTTPStatusError as e:
+            body = ""
+            try:
+                body = e.response.text
+            except Exception:
+                pass
+            snapshot["error"] = {
+                "type": "http_error",
+                "status_code": e.response.status_code,
+                "message": str(e),
+                "body": body[:1000],
+            }
+            return snapshot
+
+        if isinstance(raw_balances, list):
+            snapshot["balances"] = [
+                {
+                    "asset": row.get("asset"),
+                    "balance": float(row.get("balance", 0) or 0),
+                    "cross_wallet_balance": float(
+                        row.get("crossWalletBalance", 0) or 0
+                    ),
+                    "available_balance": float(
+                        row.get("availableBalance", 0) or 0
+                    ),
+                    "max_withdraw_amount": float(
+                        row.get("maxWithdrawAmount", 0) or 0
+                    ),
+                }
+                for row in raw_balances
+                if float(row.get("balance", 0) or 0) > 0
+                or float(row.get("availableBalance", 0) or 0) > 0
+            ]
+
+        if isinstance(raw_account, dict):
+            snapshot["account"] = {
+                "total_wallet_balance": float(
+                    raw_account.get("totalWalletBalance", 0) or 0
+                ),
+                "total_unrealized_profit": float(
+                    raw_account.get("totalUnrealizedProfit", 0) or 0
+                ),
+                "total_margin_balance": float(
+                    raw_account.get("totalMarginBalance", 0) or 0
+                ),
+                "available_balance": float(
+                    raw_account.get("availableBalance", 0) or 0
+                ),
+                "max_withdraw_amount": float(
+                    raw_account.get("maxWithdrawAmount", 0) or 0
+                ),
+                "can_trade": bool(raw_account.get("canTrade", False)),
+                "can_deposit": bool(raw_account.get("canDeposit", False)),
+                "can_withdraw": bool(raw_account.get("canWithdraw", False)),
+            }
+
+        if isinstance(raw_positions, list):
+            snapshot["positions"] = [
+                {
+                    "symbol": row.get("symbol"),
+                    "position_side": row.get("positionSide"),
+                    "position_amt": float(row.get("positionAmt", 0) or 0),
+                    "entry_price": float(row.get("entryPrice", 0) or 0),
+                    "unrealized_profit": float(row.get("unRealizedProfit", 0) or 0),
+                    "leverage": int(float(row.get("leverage", 0) or 0)),
+                    "margin_type": row.get("marginType"),
+                }
+                for row in raw_positions
+                if float(row.get("positionAmt", 0) or 0) != 0
+            ]
+
+        snapshot["ok"] = True
+        return snapshot
+
     def _request(
         self,
         method: str,

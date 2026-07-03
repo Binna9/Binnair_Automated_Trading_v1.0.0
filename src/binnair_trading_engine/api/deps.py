@@ -16,8 +16,11 @@ from typing import Annotated
 from fastapi import Depends
 
 from binnair_trading_engine.api.repository import FlowQueryRepository
+from binnair_trading_engine.config import load_config
+from binnair_trading_engine.config.settings import EngineConfig
 
 _query_repo: FlowQueryRepository | None = None
+_engine_config: EngineConfig | None = None
 
 
 def load_config_path() -> None:
@@ -38,4 +41,13 @@ def get_query_repo() -> FlowQueryRepository:
     return _query_repo
 
 
+def get_engine_config() -> EngineConfig:
+    global _engine_config
+    load_config_path()
+    if _engine_config is None:
+        _engine_config = load_config()
+    return _engine_config
+
+
 RepoDep = Annotated[FlowQueryRepository, Depends(get_query_repo)]
+ConfigDep = Annotated[EngineConfig, Depends(get_engine_config)]

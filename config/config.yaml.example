@@ -155,12 +155,10 @@ predictor_config:
     forecast_mode: "average"
     # forecast_mode=last 일 때만 사용. -1 = 마지막 스텝.
     forecast_index: -1
-    # 수수료율. 예측 수익률 계산 시 차감.
-    fee_rate: 0.0004
-    # 슬리피지 가정. 예측 수익률 계산 시 차감.
-    slippage_rate: 0.0005
-    # BUY/SELL 임계값 = fee_rate×2 + slippage_rate + safety_margin (testnet 기본 ≈ 0.15%)
-    safety_margin: 0.0002
+    # 수수료·슬리피지·마진 → threshold = fee×2 + slippage + safety (testnet ≈ 0.01%)
+    fee_rate: 0.00003
+    slippage_rate: 0.00002
+    safety_margin: 0.00002
 
 # true: risk.check() 활성화. false: 리스크 검문 없이 주문(디버그용, 비권장).
 risk_enabled: true

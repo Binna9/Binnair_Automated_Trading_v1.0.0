@@ -13,8 +13,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from binnair_trading_engine.api.deps import RepoDep
+from binnair_trading_engine.api.deps import ConfigDep, RepoDep
 from binnair_trading_engine.api.serialize import serialize
+from binnair_trading_engine.api.wallet_service import fetch_wallet_info
 
 router = APIRouter(prefix="/api/v1")
 
@@ -29,6 +30,15 @@ def get_dashboard(
     return serialize(
         repo.get_dashboard(user_id=user_id, run_id=run_id, symbol=symbol)
     )
+
+
+@router.get("/account/wallet")
+def get_account_wallet(cfg: ConfigDep) -> dict[str, Any]:
+    """
+    config.exchange(testnet) 지갑·포지션 조회.
+    엔진 sizing에 쓰는 USDT availableBalance와 주문 가능 여부 진단 포함.
+    """
+    return fetch_wallet_info(cfg)
 
 
 @router.get("/engine-runs")
