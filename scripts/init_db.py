@@ -50,6 +50,7 @@ def init_db(drop_existing: bool = False, config_path: Path | str | None = None) 
     # 모든 이력 테이블에 user_id 추가 (사용자별 이력 분리)
     _migrate_user_id(engine, schema)
     _migrate_futures_order_columns(engine, schema)
+    _backfill_trade_result_from_snapshots(engine, schema)
 
     print("Done.")
 
@@ -114,6 +115,9 @@ def _migrate_user_id(engine, schema: str) -> None:
         "risk_event",
         "model_inference_event",
         "audit_log",
+        "trade_result",
+        "performance_daily",
+        "equity_snapshot",
     ]
     with engine.connect() as conn:
         for tbl in tables:
@@ -141,6 +145,94 @@ def _migrate_futures_order_columns(engine, schema: str) -> None:
         conn.execute(text(f"ALTER TABLE {order_execution_table} ADD COLUMN IF NOT EXISTS position_side VARCHAR(16) DEFAULT 'BOTH'"))
         conn.commit()
     print("futures order columns migration applied.")
+
+
+def _backfill_trade_result_from_snapshots(engine, schema: str) -> None:
+    """기존 position_snapshot CLOSED → trade_result + performance_daily 백필."""
+    from binnair_trading_engine.domain.models import Position
+    from binnair_trading_engine.performance.metrics import build_trade_result_create
+    from binnair_trading_engine.infra.persistence.repositories.postgres import (
+        PostgresRepositoryFactory,
+    )
+
+    table = f'"{schema}".position_snapshot'
+    with engine.connect() as conn:
+        exists = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = :schema AND table_name = 'trade_result'"
+            ),
+            {"schema": schema},
+        ).scalar_one_or_none()
+        if not exists:
+            return
+
+        rows = conn.execute(
+            text(f"""
+                SELECT DISTINCT ON (run_id, symbol, closed_at)
+                    id, user_id, run_id, strategy_id, symbol, side,
+                    quantity, avg_entry_price, exit_price, realized_pnl,
+                    exit_reason, opened_at, closed_at, paper_mode
+                FROM {table}
+                WHERE status = 'CLOSED'
+                  AND realized_pnl IS NOT NULL
+                  AND closed_at IS NOT NULL
+                  AND exit_price IS NOT NULL
+                ORDER BY run_id, symbol, closed_at, snapshot_at DESC
+            """)
+        ).fetchall()
+
+    if not rows:
+        print("trade_result backfill: no CLOSED snapshots.")
+        return
+
+    repos = PostgresRepositoryFactory()
+    inserted = 0
+    for row in rows:
+        (
+            snap_id,
+            user_id,
+            run_id,
+            strategy_id,
+            symbol,
+            side,
+            quantity,
+            entry,
+            exit_p,
+            realized,
+            exit_reason,
+            opened_at,
+            closed_at,
+            paper_mode,
+        ) = row
+        pos = Position(
+            symbol=symbol,
+            quantity=0.0,
+            filled_quantity=float(quantity or 0.0),
+            avg_entry_price=float(entry or 0.0),
+            side=side or "LONG",
+            status="CLOSED",
+            opened_at=opened_at,
+            closed_at=closed_at,
+            run_id=run_id,
+            realized_pnl=float(realized or 0.0),
+            exit_reason=exit_reason or "",
+            exit_price=float(exit_p or 0.0),
+        )
+        dto = build_trade_result_create(
+            pos,
+            strategy_id=strategy_id or "",
+            user_id=user_id or "default",
+            paper_mode=bool(paper_mode),
+            position_snapshot_id=int(snap_id),
+            trade_id=f"backfill-{snap_id}",
+        )
+        if dto is None:
+            continue
+        if repos.trade_result.record_closed_trade(dto) is not None:
+            inserted += 1
+
+    print(f"trade_result backfill: {inserted} rows from position_snapshot.")
 
 
 def _default_config_path() -> Path | None:

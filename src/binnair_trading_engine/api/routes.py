@@ -9,15 +9,29 @@ DB·비즈니스 로직은 repository에 위임한다.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from binnair_trading_engine.api.deps import ConfigDep, RepoDep
+from binnair_trading_engine.api.deps import ConfigDep, PerformanceRepoDep, RepoDep
 from binnair_trading_engine.api.serialize import serialize
 from binnair_trading_engine.api.wallet_service import fetch_wallet_info
 
 router = APIRouter(prefix="/api/v1")
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    return date.fromisoformat(value[:10])
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = value.replace("Z", "+00:00")
+    return datetime.fromisoformat(text)
 
 
 @router.get("/dashboard")
@@ -156,5 +170,72 @@ def get_flow_timeline(
 ) -> dict[str, Any]:
     items = repo.get_flow_timeline(
         user_id=user_id, run_id=run_id, symbol=symbol, limit=limit
+    )
+    return {"items": serialize(items), "count": len(items)}
+
+
+@router.get("/performance/summary")
+def get_performance_summary(
+    perf: PerformanceRepoDep,
+    user_id: str = Query(default="default"),
+    run_id: str | None = Query(default=None),
+    symbol: str | None = Query(default=None),
+    from_at: str | None = Query(default=None, description="ISO8601 시작"),
+    to_at: str | None = Query(default=None, description="ISO8601 종료"),
+) -> dict[str, Any]:
+    """기간별 성과 요약 (승률·PnL·수익률)."""
+    return serialize(
+        perf.get_summary(
+            user_id=user_id,
+            run_id=run_id,
+            symbol=symbol,
+            from_at=_parse_datetime(from_at),
+            to_at=_parse_datetime(to_at),
+        )
+    )
+
+
+@router.get("/performance/periods")
+def get_performance_periods(
+    perf: PerformanceRepoDep,
+    user_id: str = Query(default="default"),
+    run_id: str | None = Query(default=None),
+    granularity: str = Query(default="day", description="day | week | month"),
+    from_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    to_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=90, ge=1, le=366),
+) -> dict[str, Any]:
+    """일/주/월 단위 성과 시계열."""
+    if granularity not in ("day", "week", "month"):
+        raise HTTPException(status_code=400, detail="granularity must be day|week|month")
+    items = perf.list_periods(
+        user_id=user_id,
+        run_id=run_id,
+        granularity=granularity,
+        from_date=_parse_date(from_date),
+        to_date=_parse_date(to_date),
+        limit=limit,
+    )
+    return {"granularity": granularity, "items": serialize(items), "count": len(items)}
+
+
+@router.get("/performance/trades")
+def list_performance_trades(
+    perf: PerformanceRepoDep,
+    user_id: str = Query(default="default"),
+    run_id: str | None = Query(default=None),
+    symbol: str | None = Query(default=None),
+    from_at: str | None = Query(default=None),
+    to_at: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    """청산 완료 거래 목록 (trade_result)."""
+    items = perf.list_trades(
+        user_id=user_id,
+        run_id=run_id,
+        symbol=symbol,
+        from_at=_parse_datetime(from_at),
+        to_at=_parse_datetime(to_at),
+        limit=limit,
     )
     return {"items": serialize(items), "count": len(items)}

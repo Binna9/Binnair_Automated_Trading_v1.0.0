@@ -100,6 +100,7 @@ class Position:
     realized_pnl: float = 0.0  # 청산 시 (exit_price - avg_entry_price) * quantity (LONG)
     exit_reason: str = ""  # TAKE_PROFIT | STOP_LOSS (청산 시에만)
     exit_price: float = 0.0  # 청산가 (청산 시에만)
+    filled_quantity: float = 0.0  # 청산 시 보존된 진입 수량 (quantity는 0)
 
     def is_open(self) -> bool:
         """포지션이 보유 중인지. 수량 0이면 False."""

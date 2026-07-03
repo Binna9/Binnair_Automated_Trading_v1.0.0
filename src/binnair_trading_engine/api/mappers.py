@@ -14,8 +14,10 @@ from binnair_trading_engine.infra.persistence.dto import (
     ModelInferenceEventDTO,
     OrderExecutionDTO,
     OrderRequestDTO,
+    PerformanceDailyDTO,
     PositionSnapshotDTO,
     SignalEventDTO,
+    TradeResultDTO,
 )
 from binnair_trading_engine.infra.persistence.models import (
     AuditLogModel,
@@ -23,8 +25,10 @@ from binnair_trading_engine.infra.persistence.models import (
     ModelInferenceEventModel,
     OrderExecutionModel,
     OrderRequestModel,
+    PerformanceDailyModel,
     PositionSnapshotModel,
     SignalEventModel,
+    TradeResultModel,
 )
 
 
@@ -162,5 +166,54 @@ def to_audit_log_dto(m: AuditLogModel) -> AuditLogDTO:
         event=m.event,
         data=m.data or {},
         paper_mode=m.paper_mode,
+        created_at=m.created_at,
+    )
+
+
+def to_trade_result_dto(m: TradeResultModel) -> TradeResultDTO:
+    return TradeResultDTO(
+        id=m.id,
+        trade_id=m.trade_id,
+        user_id=m.user_id,
+        run_id=m.run_id,
+        strategy_id=m.strategy_id,
+        symbol=m.symbol,
+        side=m.side,
+        quantity=m.quantity,
+        entry_price=m.entry_price,
+        exit_price=m.exit_price,
+        entry_notional_usdt=m.entry_notional_usdt,
+        realized_pnl=m.realized_pnl,
+        pnl_pct=m.pnl_pct,
+        is_win=m.is_win,
+        exit_reason=m.exit_reason,
+        correlation_id=m.correlation_id or "",
+        opened_at=m.opened_at,
+        closed_at=m.closed_at,
+        hold_seconds=m.hold_seconds,
+        paper_mode=m.paper_mode,
+        position_snapshot_id=m.position_snapshot_id,
+        created_at=m.created_at,
+    )
+
+
+def to_performance_daily_dto(m: PerformanceDailyModel) -> PerformanceDailyDTO:
+    return PerformanceDailyDTO(
+        id=m.id,
+        user_id=m.user_id,
+        run_id=m.run_id,
+        period_date=m.period_date,
+        trade_count=m.trade_count,
+        win_count=m.win_count,
+        loss_count=m.loss_count,
+        breakeven_count=m.breakeven_count,
+        realized_pnl_sum=m.realized_pnl_sum,
+        gross_profit=m.gross_profit,
+        gross_loss=m.gross_loss,
+        avg_pnl_pct=m.avg_pnl_pct,
+        opening_equity_usdt=m.opening_equity_usdt,
+        closing_equity_usdt=m.closing_equity_usdt,
+        paper_mode=m.paper_mode,
+        updated_at=m.updated_at,
         created_at=m.created_at,
     )

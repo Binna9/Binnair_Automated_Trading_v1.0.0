@@ -5,7 +5,7 @@ Repository 입출력용 DTO를 정의한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 
@@ -340,3 +340,106 @@ class OhlcvCandleCreate:
     volume: float
     quote_volume: float | None = None
     trade_count: int | None = None
+
+
+@dataclass
+class TradeResultDTO:
+    """trade_result 테이블용 DTO."""
+
+    trade_id: str
+    run_id: str
+    strategy_id: str
+    symbol: str
+    side: str
+    quantity: float
+    entry_price: float
+    exit_price: float
+    entry_notional_usdt: float
+    realized_pnl: float
+    pnl_pct: float
+    is_win: bool
+    opened_at: datetime
+    closed_at: datetime
+    exit_reason: str | None = None
+    correlation_id: str = ""
+    hold_seconds: int | None = None
+    paper_mode: bool = True
+    user_id: str = "default"
+    position_snapshot_id: int | None = None
+    created_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass
+class PerformanceDailyDTO:
+    """performance_daily 테이블용 DTO."""
+
+    run_id: str
+    period_date: date
+    trade_count: int
+    win_count: int
+    loss_count: int
+    breakeven_count: int
+    realized_pnl_sum: float
+    gross_profit: float
+    gross_loss: float
+    avg_pnl_pct: float
+    opening_equity_usdt: float | None = None
+    closing_equity_usdt: float | None = None
+    paper_mode: bool = True
+    user_id: str = "default"
+    updated_at: datetime | None = None
+    created_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass
+class EquitySnapshotDTO:
+    """equity_snapshot 테이블용 DTO."""
+
+    run_id: str
+    snapshot_at: datetime
+    snapshot_date: date
+    equity_usdt: float
+    cumulative_realized_pnl: float
+    source: str
+    paper_mode: bool = True
+    user_id: str = "default"
+    created_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass
+class TradeResultCreate:
+    trade_id: str
+    run_id: str
+    strategy_id: str
+    symbol: str
+    side: str
+    quantity: float
+    entry_price: float
+    exit_price: float
+    entry_notional_usdt: float
+    realized_pnl: float
+    pnl_pct: float
+    is_win: bool
+    opened_at: datetime
+    closed_at: datetime
+    exit_reason: str | None = None
+    correlation_id: str = ""
+    hold_seconds: int | None = None
+    paper_mode: bool = True
+    user_id: str = "default"
+    position_snapshot_id: int | None = None
+
+
+@dataclass
+class EquitySnapshotCreate:
+    run_id: str
+    snapshot_at: datetime
+    snapshot_date: date
+    equity_usdt: float
+    cumulative_realized_pnl: float
+    source: str
+    paper_mode: bool = True
+    user_id: str = "default"

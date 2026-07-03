@@ -1,6 +1,7 @@
 # BinnAIR Trading Monitor API — 프론트엔드 연동 가이드
 
-> **read-only** API. 매매 제어(start/stop/주문) 없음. DB 이력 조회 전용.
+> **read-only** API. 매매 제어(start/stop/주문) 없음. DB 이력 조회 전용.  
+> **전체 엔드포인트 목록·상세:** [API_REFERENCE.md](./API_REFERENCE.md) (지갑·성과 API 포함)
 
 ---
 

@@ -4,11 +4,12 @@ OHLCV, 실행 이력, 시그널, 주문, 포지션, 추론 이벤트, 감사 로
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -252,6 +253,113 @@ class PositionSnapshotModel(Base):
     __table_args__ = (
         Index("ix_position_snapshot_run_symbol_at", "run_id", "symbol", "snapshot_at"),
         {"comment": "포지션 스냅샷. OPEN/CLOSED, TP/SL, 실현/미실현 PnL"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# trade_result
+# ---------------------------------------------------------------------------
+class TradeResultModel(Base):
+    """
+    청산 완료 거래 1건 = 1 row.
+    승률·기간별 손익 집계의 원천 데이터.
+    """
+
+    __tablename__ = "trade_result"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    trade_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, comment="거래 UUID")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    strategy_id: Mapped[str] = mapped_column(String(128), index=True, comment="전략 ID")
+    symbol: Mapped[str] = mapped_column(String(32), index=True, comment="심볼")
+    side: Mapped[str] = mapped_column(String(16), comment="LONG|SHORT")
+    quantity: Mapped[float] = mapped_column(Float, comment="체결 수량")
+    entry_price: Mapped[float] = mapped_column(Float, comment="진입가")
+    exit_price: Mapped[float] = mapped_column(Float, comment="청산가")
+    entry_notional_usdt: Mapped[float] = mapped_column(Float, comment="진입 명목 USDT")
+    realized_pnl: Mapped[float] = mapped_column(Float, comment="실현 손익 USDT")
+    pnl_pct: Mapped[float] = mapped_column(Float, default=0.0, comment="거래 수익률 %")
+    is_win: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="승리 여부")
+    exit_reason: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="청산 사유")
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True, default="", comment="추적 ID")
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="진입 시각")
+    closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, comment="청산 시각")
+    hold_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="보유 시간(초)")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    position_snapshot_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, unique=True, comment="position_snapshot FK"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = (
+        Index("ix_trade_result_user_run_closed", "user_id", "run_id", "closed_at"),
+        {"comment": "청산 완료 거래 결과. 승률·PnL 집계 원천"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# performance_daily
+# ---------------------------------------------------------------------------
+class PerformanceDailyModel(Base):
+    """
+    run_id + UTC 일별 성과 롤업.
+    trade_result 청산 시 upsert.
+    """
+
+    __tablename__ = "performance_daily"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    period_date: Mapped[date] = mapped_column(Date, index=True, comment="UTC 기준 일자")
+    trade_count: Mapped[int] = mapped_column(Integer, default=0, comment="거래 수")
+    win_count: Mapped[int] = mapped_column(Integer, default=0, comment="승")
+    loss_count: Mapped[int] = mapped_column(Integer, default=0, comment="패")
+    breakeven_count: Mapped[int] = mapped_column(Integer, default=0, comment="무승부")
+    realized_pnl_sum: Mapped[float] = mapped_column(Float, default=0.0, comment="일 실현손익 합")
+    gross_profit: Mapped[float] = mapped_column(Float, default=0.0, comment="이익 거래 합")
+    gross_loss: Mapped[float] = mapped_column(Float, default=0.0, comment="손실 거래 절대값 합")
+    avg_pnl_pct: Mapped[float] = mapped_column(Float, default=0.0, comment="평균 거래 수익률 %")
+    opening_equity_usdt: Mapped[float | None] = mapped_column(Float, nullable=True, comment="일 시작 잔고")
+    closing_equity_usdt: Mapped[float | None] = mapped_column(Float, nullable=True, comment="일 종료 잔고")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="수정"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "run_id", "period_date", name="uq_performance_daily_user_run_date"),
+        {"comment": "일별 성과 롤업 (승률·PnL·수익률 계산용)"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# equity_snapshot
+# ---------------------------------------------------------------------------
+class EquitySnapshotModel(Base):
+    """
+    잔고 스냅샷. 엔진 시작·청산 시 기록.
+    기간 수익률(%) 분모(기준 자본)로 사용.
+    """
+
+    __tablename__ = "equity_snapshot"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="실행 ID")
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, comment="스냅샷 시각")
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True, comment="UTC 일자")
+    equity_usdt: Mapped[float] = mapped_column(Float, comment="지갑 USDT 잔고")
+    cumulative_realized_pnl: Mapped[float] = mapped_column(Float, default=0.0, comment="누적 실현손익")
+    source: Mapped[str] = mapped_column(String(32), default="engine_start", comment="engine_start|trade_close")
+    paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = (
+        Index("ix_equity_snapshot_user_run_date", "user_id", "run_id", "snapshot_date"),
+        {"comment": "잔고 스냅샷. 기간 수익률 분모 계산용"},
     )
 
 

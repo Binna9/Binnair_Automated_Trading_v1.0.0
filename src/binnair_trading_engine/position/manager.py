@@ -93,6 +93,7 @@ class PositionManager:
         closed_position = Position(
             symbol=pos.symbol,
             quantity=0.0,
+            filled_quantity=pos.quantity,
             avg_entry_price=pos.avg_entry_price,
             side=pos.side,
             tp_price=pos.tp_price,

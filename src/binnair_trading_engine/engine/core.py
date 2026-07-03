@@ -77,6 +77,17 @@ class TradingEngine:
             ctx=self._ctx,
             paper_mode=self._config.exchange.paper_mode,
         )
+        if hasattr(self._storage, "record_equity_at_start"):
+            try:
+                quote = self._config.sizing.quote_asset
+                balance = self._exchange.get_available_balance(quote)
+                if balance > 0:
+                    self._storage.record_equity_at_start(
+                        run_id=self._ctx.run_id,
+                        equity_usdt=balance,
+                    )
+            except Exception:
+                logger.debug("Starting equity snapshot skipped", exc_info=True)
         logger.info(
             "Engine started",
             extra={

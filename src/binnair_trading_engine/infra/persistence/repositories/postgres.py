@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,8 @@ from binnair_trading_engine.infra.persistence.dto import (
     RiskEventCreate,
     SignalEventCreate,
     StrategyConfigSnapshotCreate,
+    TradeResultCreate,
+    EquitySnapshotCreate,
 )
 from binnair_trading_engine.infra.persistence.models import (
     AuditLogModel,
@@ -37,8 +39,13 @@ from binnair_trading_engine.infra.persistence.models import (
     RiskEventModel,
     SignalEventModel,
     StrategyConfigSnapshotModel,
+    TradeResultModel,
+    PerformanceDailyModel,
+    EquitySnapshotModel,
 )
 from binnair_trading_engine.infra.persistence.session import get_engine, get_session_factory
+
+from binnair_trading_engine.performance.metrics import win_loss_flags
 
 if TYPE_CHECKING:
     from binnair_trading_engine.domain.models import Order
@@ -588,6 +595,268 @@ class AuditLogPostgresRepository(_BasePostgresRepository):
             session.close()
 
 
+class TradeResultPostgresRepository(_BasePostgresRepository):
+    """trade_result 테이블 repository."""
+
+    def exists(self, trade_id: str) -> bool:
+        session = self._session()
+        try:
+            stmt = select(TradeResultModel.id).where(TradeResultModel.trade_id == trade_id)
+            return session.execute(stmt).scalar_one_or_none() is not None
+        finally:
+            session.close()
+
+    def create(self, dto: TradeResultCreate) -> int | None:
+        if self.exists(dto.trade_id):
+            return None
+        session = self._session()
+        try:
+            m = TradeResultModel(
+                trade_id=dto.trade_id,
+                user_id=dto.user_id or "default",
+                run_id=dto.run_id,
+                strategy_id=dto.strategy_id,
+                symbol=dto.symbol,
+                side=dto.side,
+                quantity=dto.quantity,
+                entry_price=dto.entry_price,
+                exit_price=dto.exit_price,
+                entry_notional_usdt=dto.entry_notional_usdt,
+                realized_pnl=dto.realized_pnl,
+                pnl_pct=dto.pnl_pct,
+                is_win=dto.is_win,
+                exit_reason=dto.exit_reason,
+                correlation_id=dto.correlation_id or "",
+                opened_at=_ensure_utc(dto.opened_at),
+                closed_at=_ensure_utc(dto.closed_at),
+                hold_seconds=dto.hold_seconds,
+                paper_mode=dto.paper_mode,
+                position_snapshot_id=dto.position_snapshot_id,
+            )
+            session.add(m)
+            session.commit()
+            session.refresh(m)
+            return m.id
+        except Exception as e:
+            session.rollback()
+            logger.exception("TradeResult create failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+    def record_closed_trade(self, dto: TradeResultCreate) -> int | None:
+        """trade_result insert + performance_daily upsert."""
+        if self.exists(dto.trade_id):
+            return None
+        session = self._session()
+        try:
+            m = TradeResultModel(
+                trade_id=dto.trade_id,
+                user_id=dto.user_id or "default",
+                run_id=dto.run_id,
+                strategy_id=dto.strategy_id,
+                symbol=dto.symbol,
+                side=dto.side,
+                quantity=dto.quantity,
+                entry_price=dto.entry_price,
+                exit_price=dto.exit_price,
+                entry_notional_usdt=dto.entry_notional_usdt,
+                realized_pnl=dto.realized_pnl,
+                pnl_pct=dto.pnl_pct,
+                is_win=dto.is_win,
+                exit_reason=dto.exit_reason,
+                correlation_id=dto.correlation_id or "",
+                opened_at=_ensure_utc(dto.opened_at),
+                closed_at=_ensure_utc(dto.closed_at),
+                hold_seconds=dto.hold_seconds,
+                paper_mode=dto.paper_mode,
+                position_snapshot_id=dto.position_snapshot_id,
+            )
+            session.add(m)
+            session.flush()
+
+            closed_at = _ensure_utc(dto.closed_at)
+            period_date = closed_at.date()
+            is_win, is_loss, is_be = win_loss_flags(dto.realized_pnl)
+            win_inc = 1 if is_win else 0
+            loss_inc = 1 if is_loss else 0
+            be_inc = 1 if is_be else 0
+            gross_profit = dto.realized_pnl if is_win else 0.0
+            gross_loss = abs(dto.realized_pnl) if is_loss else 0.0
+
+            daily_table = PerformanceDailyModel.__table__
+            stmt = insert(PerformanceDailyModel).values(
+                user_id=dto.user_id or "default",
+                run_id=dto.run_id,
+                period_date=period_date,
+                trade_count=1,
+                win_count=win_inc,
+                loss_count=loss_inc,
+                breakeven_count=be_inc,
+                realized_pnl_sum=dto.realized_pnl,
+                gross_profit=gross_profit,
+                gross_loss=gross_loss,
+                avg_pnl_pct=dto.pnl_pct,
+                paper_mode=dto.paper_mode,
+            )
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_performance_daily_user_run_date",
+                set_={
+                    "trade_count": daily_table.c.trade_count + 1,
+                    "win_count": daily_table.c.win_count + win_inc,
+                    "loss_count": daily_table.c.loss_count + loss_inc,
+                    "breakeven_count": daily_table.c.breakeven_count + be_inc,
+                    "realized_pnl_sum": daily_table.c.realized_pnl_sum + dto.realized_pnl,
+                    "gross_profit": daily_table.c.gross_profit + gross_profit,
+                    "gross_loss": daily_table.c.gross_loss + gross_loss,
+                    "avg_pnl_pct": (
+                        daily_table.c.avg_pnl_pct * daily_table.c.trade_count + dto.pnl_pct
+                    )
+                    / (daily_table.c.trade_count + 1),
+                    "updated_at": func.now(),
+                },
+            )
+            session.execute(stmt)
+
+            opening = session.execute(
+                select(PerformanceDailyModel.opening_equity_usdt).where(
+                    PerformanceDailyModel.user_id == (dto.user_id or "default"),
+                    PerformanceDailyModel.run_id == dto.run_id,
+                    PerformanceDailyModel.period_date == period_date,
+                )
+            ).scalar_one_or_none()
+            if opening is not None:
+                row = session.execute(
+                    select(PerformanceDailyModel).where(
+                        PerformanceDailyModel.user_id == (dto.user_id or "default"),
+                        PerformanceDailyModel.run_id == dto.run_id,
+                        PerformanceDailyModel.period_date == period_date,
+                    )
+                ).scalar_one()
+                row.closing_equity_usdt = opening + row.realized_pnl_sum
+
+            session.commit()
+            session.refresh(m)
+            return m.id
+        except Exception as e:
+            session.rollback()
+            logger.exception("TradeResult record_closed_trade failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+    def sum_realized_pnl(
+        self, *, user_id: str, run_id: str | None = None
+    ) -> float:
+        session = self._session()
+        try:
+            stmt = select(func.coalesce(func.sum(TradeResultModel.realized_pnl), 0.0)).where(
+                TradeResultModel.user_id == user_id
+            )
+            if run_id:
+                stmt = stmt.where(TradeResultModel.run_id == run_id)
+            return float(session.execute(stmt).scalar_one())
+        finally:
+            session.close()
+
+
+class PerformanceDailyPostgresRepository(_BasePostgresRepository):
+    """performance_daily 테이블 repository."""
+
+    def set_opening_equity_if_missing(
+        self,
+        *,
+        user_id: str,
+        run_id: str,
+        period_date,
+        equity_usdt: float,
+        paper_mode: bool,
+    ) -> None:
+        session = self._session()
+        try:
+            row = session.execute(
+                select(PerformanceDailyModel).where(
+                    PerformanceDailyModel.user_id == user_id,
+                    PerformanceDailyModel.run_id == run_id,
+                    PerformanceDailyModel.period_date == period_date,
+                )
+            ).scalar_one_or_none()
+            if row is not None:
+                if row.opening_equity_usdt is None:
+                    row.opening_equity_usdt = equity_usdt
+                    row.closing_equity_usdt = equity_usdt + row.realized_pnl_sum
+            else:
+                session.add(
+                    PerformanceDailyModel(
+                        user_id=user_id,
+                        run_id=run_id,
+                        period_date=period_date,
+                        opening_equity_usdt=equity_usdt,
+                        closing_equity_usdt=equity_usdt,
+                        paper_mode=paper_mode,
+                    )
+                )
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.exception("PerformanceDaily set_opening_equity failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+
+class EquitySnapshotPostgresRepository(_BasePostgresRepository):
+    """equity_snapshot 테이블 repository."""
+
+    def create(self, dto: EquitySnapshotCreate) -> int | None:
+        session = self._session()
+        try:
+            m = EquitySnapshotModel(
+                user_id=dto.user_id or "default",
+                run_id=dto.run_id,
+                snapshot_at=_ensure_utc(dto.snapshot_at),
+                snapshot_date=dto.snapshot_date,
+                equity_usdt=dto.equity_usdt,
+                cumulative_realized_pnl=dto.cumulative_realized_pnl,
+                source=dto.source,
+                paper_mode=dto.paper_mode,
+            )
+            session.add(m)
+            session.commit()
+            session.refresh(m)
+            return m.id
+        except Exception as e:
+            session.rollback()
+            logger.exception("EquitySnapshot create failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+    def get_reference_equity(
+        self,
+        *,
+        user_id: str,
+        run_id: str,
+        before_date=None,
+    ) -> float | None:
+        session = self._session()
+        try:
+            stmt = (
+                select(EquitySnapshotModel.equity_usdt)
+                .where(
+                    EquitySnapshotModel.user_id == user_id,
+                    EquitySnapshotModel.run_id == run_id,
+                )
+                .order_by(EquitySnapshotModel.snapshot_at.asc())
+            )
+            if before_date is not None:
+                stmt = stmt.where(EquitySnapshotModel.snapshot_date <= before_date)
+            val = session.execute(stmt.limit(1)).scalar_one_or_none()
+            return float(val) if val is not None else None
+        finally:
+            session.close()
+
+
 class PostgresRepositoryFactory:
     """Postgres repository 팩토리."""
 
@@ -602,6 +871,9 @@ class PostgresRepositoryFactory:
         self._risk_event = RiskEventPostgresRepository()
         self._model_inference = ModelInferenceEventPostgresRepository()
         self._audit_log = AuditLogPostgresRepository()
+        self._trade_result = TradeResultPostgresRepository()
+        self._performance_daily = PerformanceDailyPostgresRepository()
+        self._equity_snapshot = EquitySnapshotPostgresRepository()
 
     @property
     def ohlcv_candle(self) -> OhlcvCandlePostgresRepository:
@@ -642,3 +914,15 @@ class PostgresRepositoryFactory:
     @property
     def audit_log(self) -> AuditLogPostgresRepository:
         return self._audit_log
+
+    @property
+    def trade_result(self) -> TradeResultPostgresRepository:
+        return self._trade_result
+
+    @property
+    def performance_daily(self) -> PerformanceDailyPostgresRepository:
+        return self._performance_daily
+
+    @property
+    def equity_snapshot(self) -> EquitySnapshotPostgresRepository:
+        return self._equity_snapshot

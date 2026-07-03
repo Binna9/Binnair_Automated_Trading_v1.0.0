@@ -26,12 +26,14 @@ from ..domain.models import (
 from ..infra.persistence.dto import (
     AuditLogCreate,
     EngineRunCreate,
+    EquitySnapshotCreate,
     ModelInferenceEventCreate,
     OrderExecutionCreate,
     OrderRequestCreate,
     PositionSnapshotCreate,
     SignalEventCreate,
 )
+from ..performance.metrics import build_trade_result_create
 from ..infra.persistence.repositories.postgres import PostgresRepositoryFactory
 from .interface import (
     AuditStore,
@@ -193,7 +195,7 @@ class PostgresDbStorage(
             user_id=self._user_id,
             symbol=position.symbol,
             side=position.side,
-            quantity=position.quantity,
+            quantity=position.quantity if position.status == "OPEN" else getattr(position, "filled_quantity", 0.0) or position.quantity,
             avg_entry_price=position.avg_entry_price,
             tp_price=position.tp_price,
             sl_price=position.sl_price,
@@ -207,7 +209,18 @@ class PostgresDbStorage(
             exit_reason=exit_reason,
             exit_price=exit_price,
         )
-        self._repos.position_snapshot.create(dto)
+        snapshot_id = self._repos.position_snapshot.create(dto)
+
+        if position.status == "CLOSED" and realized_pnl is not None:
+            trade_dto = build_trade_result_create(
+                position,
+                strategy_id=self._strategy_id,
+                user_id=self._user_id,
+                paper_mode=self._paper_mode,
+                position_snapshot_id=snapshot_id,
+            )
+            if trade_dto is not None:
+                self._repos.trade_result.record_closed_trade(trade_dto)
 
     def get_positions(self, run_id: str) -> list[Position]:
         return []
@@ -285,6 +298,32 @@ class PostgresDbStorage(
             user_id=getattr(ctx, "user_id", "default"),
         )
         self._repos.engine_run.create(dto)
+
+    def record_equity_at_start(self, run_id: str, equity_usdt: float) -> None:
+        """엔진 시작 시 잔고 스냅샷 + 당일 performance_daily opening_equity 설정."""
+        if equity_usdt <= 0:
+            return
+        now = _dt(None)
+        today = now.date()
+        self._repos.equity_snapshot.create(
+            EquitySnapshotCreate(
+                run_id=run_id,
+                user_id=self._user_id,
+                snapshot_at=now,
+                snapshot_date=today,
+                equity_usdt=equity_usdt,
+                cumulative_realized_pnl=0.0,
+                source="engine_start",
+                paper_mode=self._paper_mode,
+            )
+        )
+        self._repos.performance_daily.set_opening_equity_if_missing(
+            user_id=self._user_id,
+            run_id=run_id,
+            period_date=today,
+            equity_usdt=equity_usdt,
+            paper_mode=self._paper_mode,
+        )
 
     def record_engine_stop(self, run_id: str, status: str = "stopped") -> None:
         self._repos.engine_run.update_status(
