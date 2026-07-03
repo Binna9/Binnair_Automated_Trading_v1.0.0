@@ -112,7 +112,8 @@ class PredictorTimesFMConfig:
     context_length: int = 128
     min_context: int = 64
     horizon: int = 3
-    forecast_index: int = -1
+    forecast_mode: str = "average"  # "average" | "last"
+    forecast_index: int = -1  # forecast_mode="last" 일 때만 사용
     use_ohlcv_history: bool = True
     timeframe: str = "1m"
     fee_rate: float = 0.0004
@@ -272,6 +273,9 @@ class EngineConfig:
             context_length=int(tfm.get("context_length", PredictorTimesFMConfig.context_length)),
             min_context=int(tfm.get("min_context", PredictorTimesFMConfig.min_context)),
             horizon=int(tfm.get("horizon", PredictorTimesFMConfig.horizon)),
+            forecast_mode=str(
+                tfm.get("forecast_mode", PredictorTimesFMConfig.forecast_mode)
+            ),
             forecast_index=int(tfm.get("forecast_index", PredictorTimesFMConfig.forecast_index)),
             use_ohlcv_history=bool(tfm.get("use_ohlcv_history", PredictorTimesFMConfig.use_ohlcv_history)),
             timeframe=tfm.get("timeframe", PredictorTimesFMConfig.timeframe),

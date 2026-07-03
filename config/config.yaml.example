@@ -126,8 +126,8 @@ risk:
 # signal_policy: TimesFM raw 시그널 → 실제 주문 허용 여부 필터
 # ---------------------------------------------------------------------------
 signal_policy:
-  # 같은 방향 시그널이 연속 N회일 때만 진입/청산 허용. 3 = 3연속 BUY/SELL.
-  consecutive_required: 3
+  # 같은 방향 시그널이 연속 N회일 때만 진입/청산 허용. testnet 실험: 2.
+  consecutive_required: 2
   # "long_only": BUY N연속→롱 진입, SELL N연속→롱 청산, HOLD→유지.
   mode: "long_only"
 
@@ -149,16 +149,18 @@ predictor_config:
     context_length: 128
     # 이 개수 미만이면 예측 skip(HOLD). TimesFM 최소 입력 길이.
     min_context: 64
-    # 한 번에 예측할 미래 스텝 수.
+    # 한 번에 예측할 미래 스텝 수 (1m봉이면 +1/+2/+3분).
     horizon: 3
-    # horizon 중 BUY/SELL 판단에 쓸 인덱스. -1 = 마지막 스텝.
+    # score 산출: average=3스텝 수익률 평균 | last=forecast_index 한 스텝만
+    forecast_mode: "average"
+    # forecast_mode=last 일 때만 사용. -1 = 마지막 스텝.
     forecast_index: -1
     # 수수료율. 예측 수익률 계산 시 차감.
     fee_rate: 0.0004
     # 슬리피지 가정. 예측 수익률 계산 시 차감.
     slippage_rate: 0.0005
-    # BUY/SELL 임계값 여유 마진. 노이즈 필터용.
-    safety_margin: 0.001
+    # BUY/SELL 임계값 = fee_rate×2 + slippage_rate + safety_margin (testnet 기본 ≈ 0.15%)
+    safety_margin: 0.0002
 
 # true: risk.check() 활성화. false: 리스크 검문 없이 주문(디버그용, 비권장).
 risk_enabled: true

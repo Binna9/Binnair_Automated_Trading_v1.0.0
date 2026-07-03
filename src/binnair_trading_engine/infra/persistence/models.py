@@ -61,9 +61,9 @@ class OhlcvCandleModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
     __table_args__ = (
-        # 같은 거래소 캔들을 반복 적재해도 중복 row가 생기지 않도록 캔들 고유키를 둔다.
         UniqueConstraint("symbol", "timeframe", "open_time", name="uq_ohlcv_candle_symbol_timeframe_open_time"),
         Index("ix_ohlcv_candle_symbol_timeframe_open_time", "symbol", "timeframe", "open_time"),
+        {"comment": "OHLCV 캔들 원천 데이터. TimesFM close 히스토리 및 백테스트용"},
     )
 
 
@@ -93,6 +93,8 @@ class EngineRunModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="수정")
 
+    __table_args__ = ({"comment": "엔진 실행 이력. run_id 기준 실행 세션 추적"},)
+
 
 # ---------------------------------------------------------------------------
 # strategy_config_snapshot
@@ -113,6 +115,8 @@ class StrategyConfigSnapshotModel(Base):
     config_json: Mapped[dict] = mapped_column(JSONB, comment="설정 JSON")
     paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = ({"comment": "실행 시점 전략 설정 스냅샷 (replay/debug)"},)
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +145,10 @@ class SignalEventModel(Base):
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="이벤트 시각")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
-    __table_args__ = (Index("ix_signal_event_run_symbol_at", "run_id", "symbol", "event_at"),)
+    __table_args__ = (
+        Index("ix_signal_event_run_symbol_at", "run_id", "symbol", "event_at"),
+        {"comment": "Predictor/Strategy BUY|SELL|HOLD 시그널 이벤트"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +179,8 @@ class OrderRequestModel(Base):
     paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="요청 시각")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = ({"comment": "엔진→거래소 주문 요청 (체결 직전)"},)
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +213,8 @@ class OrderExecutionModel(Base):
     paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
     executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="체결 시각")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = ({"comment": "주문 체결 결과 및 거래소 응답 원문"},)
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +249,10 @@ class PositionSnapshotModel(Base):
     snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="스냅샷 시각")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
-    __table_args__ = (Index("ix_position_snapshot_run_symbol_at", "run_id", "symbol", "snapshot_at"),)
+    __table_args__ = (
+        Index("ix_position_snapshot_run_symbol_at", "run_id", "symbol", "snapshot_at"),
+        {"comment": "포지션 스냅샷. OPEN/CLOSED, TP/SL, 실현/미실현 PnL"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +276,8 @@ class RiskEventModel(Base):
     paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="이벤트 시각")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = ({"comment": "리스크 거부/경고 이벤트"},)
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +304,8 @@ class ModelInferenceEventModel(Base):
     inference_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="추론 시각")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
 
+    __table_args__ = ({"comment": "모델 추론 I/O. TimesFM input_snapshot/output_prediction"},)
+
 
 # ---------------------------------------------------------------------------
 # audit_log
@@ -308,3 +326,5 @@ class AuditLogModel(Base):
     data: Mapped[dict] = mapped_column(JSONB, default=dict, comment="추가 데이터")
     paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, comment="생성")
+
+    __table_args__ = ({"comment": "주요 이벤트 감사 로그 (리스크 거부 등)"},)

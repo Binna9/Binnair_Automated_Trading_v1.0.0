@@ -162,6 +162,9 @@ class Prediction:
     model_version: str = ""
     feature_set_version: str = ""
     scaler_version: str = ""
+    forecast_mode: str = ""
+    forecast_prices: list[float] | None = None
+    forecast_returns: list[float] | None = None
 
 
 @dataclass

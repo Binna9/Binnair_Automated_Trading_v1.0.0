@@ -31,7 +31,15 @@ sys.path.insert(0, str(ROOT / "src"))
 logger = logging.getLogger("run_engine")
 
 PROCS: list[subprocess.Popen] = []
+_ENGINE_PROC: subprocess.Popen | None = None
+_CONFIG_PATH: Path | None = None
 _SHUTTING_DOWN = False
+_GRACE_SECONDS = 15
+
+if sys.platform == "win32":
+    _CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+else:
+    _CREATE_NEW_PROCESS_GROUP = 0
 
 
 def _python_bin() -> str:
@@ -41,17 +49,69 @@ def _python_bin() -> str:
     return sys.executable
 
 
+def _mark_engine_stopped(config_path: Path) -> None:
+    """자식이 강제 종료돼 stop() 못 탔을 때 engine_run status 보정."""
+    os.environ["CONFIG_PATH"] = str(config_path)
+    try:
+        from binnair_trading_engine.config import load_config
+        from binnair_trading_engine.storage import create_storage
+
+        cfg = load_config(config_path)
+        if cfg.storage.backend != "postgres":
+            return
+        storage = create_storage(cfg)
+        if hasattr(storage, "record_engine_stop"):
+            storage.record_engine_stop(cfg.run_context.run_id, "stopped")
+            logger.info(
+                "Marked engine_run stopped (fallback): run_id=%s",
+                cfg.run_context.run_id,
+            )
+    except Exception:
+        logger.exception("Failed to mark engine_run as stopped")
+
+
+def _request_graceful_stop(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            proc.terminate()
+    except Exception as e:
+        logger.warning("Graceful stop signal failed, terminating: %s", e)
+        proc.terminate()
+
+
 def _shutdown(exit_code: int = 0) -> None:
     global _SHUTTING_DOWN
     if _SHUTTING_DOWN:
         return
     _SHUTTING_DOWN = True
     logger.info("Shutting down child processes...")
+
+    # 엔진 먼저 graceful 종료 (DB status=stopped, flatten_on_shutdown)
+    if _ENGINE_PROC is not None and _ENGINE_PROC.poll() is None:
+        _request_graceful_stop(_ENGINE_PROC)
+        deadline = time.time() + _GRACE_SECONDS
+        while _ENGINE_PROC.poll() is None and time.time() < deadline:
+            time.sleep(0.1)
+        if _ENGINE_PROC.poll() is None:
+            logger.warning("Engine did not exit in %ss, killing", _GRACE_SECONDS)
+            _ENGINE_PROC.kill()
+
+    if _CONFIG_PATH is not None and _ENGINE_PROC is not None:
+        _mark_engine_stopped(_CONFIG_PATH)
+
     for proc in PROCS:
+        if proc is _ENGINE_PROC:
+            continue
         if proc.poll() is None:
             proc.terminate()
-    deadline = time.time() + 10
+    deadline = time.time() + 5
     for proc in PROCS:
+        if proc is _ENGINE_PROC:
+            continue
         while proc.poll() is None and time.time() < deadline:
             time.sleep(0.1)
         if proc.poll() is None:
@@ -123,6 +183,7 @@ def _start_ingest(
 
 
 def _start_engine(python_bin: str, config_path: Path) -> subprocess.Popen:
+    global _ENGINE_PROC
     cmd = [
         python_bin,
         "-m",
@@ -133,8 +194,12 @@ def _start_engine(python_bin: str, config_path: Path) -> subprocess.Popen:
     logger.info("Starting trading engine: %s", " ".join(cmd))
     env = os.environ.copy()
     env["CONFIG_PATH"] = str(config_path)
-    proc = subprocess.Popen(cmd, cwd=ROOT, env=env)
+    popen_kw: dict = {"cwd": ROOT, "env": env}
+    if sys.platform == "win32":
+        popen_kw["creationflags"] = _CREATE_NEW_PROCESS_GROUP
+    proc = subprocess.Popen(cmd, **popen_kw)
     PROCS.append(proc)
+    _ENGINE_PROC = proc
     return proc
 
 
@@ -194,6 +259,8 @@ def main() -> int:
         logger.error("Config not found: %s", config_path)
         return 1
 
+    global _CONFIG_PATH
+    _CONFIG_PATH = config_path
     os.environ["CONFIG_PATH"] = str(config_path)
 
     from binnair_trading_engine.config import load_config

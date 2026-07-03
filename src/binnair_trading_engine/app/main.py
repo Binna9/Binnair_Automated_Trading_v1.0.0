@@ -4,6 +4,7 @@
 """
 
 import argparse
+import atexit
 import logging
 import signal
 import sys
@@ -44,16 +45,20 @@ def main() -> int:
         interval = args.interval if args.interval is not None else 1.0
 
     engine.start()
+    running = True
 
     def _shutdown(*_: object) -> None:
-        engine.stop()
-        sys.exit(0)
+        nonlocal running
+        running = False
 
+    atexit.register(engine.stop)
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _shutdown)
 
     try:
-        while True:
+        while running:
             if provider is not None:
                 snapshot = provider.fetch_snapshot(symbol, run_id=engine._ctx.run_id)
                 if snapshot:
@@ -62,9 +67,14 @@ def main() -> int:
                     engine.run_cycle()  # heartbeat
             else:
                 engine.run_cycle()
-            time.sleep(interval)
+            # sleep을 쪼개야 Ctrl+C/SIGTERM 시 빠르게 stop() 진입
+            slept = 0.0
+            while running and slept < interval:
+                chunk = min(1.0, interval - slept)
+                time.sleep(chunk)
+                slept += chunk
     except KeyboardInterrupt:
-        pass
+        running = False
     finally:
         engine.stop()
 

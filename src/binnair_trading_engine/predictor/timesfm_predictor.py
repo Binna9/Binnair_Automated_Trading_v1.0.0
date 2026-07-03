@@ -1,6 +1,6 @@
 """
 TimesFM 사전학습 모델로 미래 가격을 예측한다.
-최근 close 히스토리 forecast를 expected return으로 바꿔 BUY/HOLD/SELL을 산출한다.
+horizon 스텝 forecast를 expected return으로 바꿔 BUY/HOLD/SELL을 산출한다.
 """
 from __future__ import annotations
 
@@ -27,8 +27,11 @@ class TimesFMPredictor(Predictor):
     """
     TimesFM zero-shot forecast 결과를 BUY/SELL/HOLD 신호로 변환한다.
 
-    expected_return이 거래 비용과 안전마진을 합친 threshold보다 크면 BUY,
-    음수 방향으로 threshold보다 작으면 SELL, 나머지는 HOLD로 판단한다.
+    forecast_mode:
+    - average: horizon 각 스텝 수익률의 산술 평균 → score
+    - last: forecast_index 한 스텝만 사용 (legacy)
+
+    expected_return(score)이 threshold보다 크면 BUY, 작으면 SELL, 나머지 HOLD.
     """
 
     def __init__(
@@ -46,6 +49,13 @@ class TimesFMPredictor(Predictor):
             + config.slippage_rate
             + config.safety_margin
         )
+        self._forecast_mode = (config.forecast_mode or "average").lower()
+        if self._forecast_mode not in ("average", "last"):
+            logger.warning(
+                "Unknown forecast_mode=%r, using average",
+                config.forecast_mode,
+            )
+            self._forecast_mode = "average"
         self._load_model()
 
     def _load_model(self) -> None:
@@ -96,8 +106,9 @@ class TimesFMPredictor(Predictor):
                 horizon=self._config.horizon,
                 inputs=[history_arr],
             )
-            predicted_price = self._select_forecast_price(point_forecast)
-            expected_return = (predicted_price - current_price) / current_price
+            forecast_prices = self._parse_forecast_prices(point_forecast)
+            forecast_returns = self._step_returns(current_price, forecast_prices)
+            expected_return = self._aggregate_return(forecast_returns)
             action = self._to_action(expected_return)
             confidence = self._to_confidence(expected_return)
 
@@ -111,6 +122,9 @@ class TimesFMPredictor(Predictor):
                 feature_set_version=(
                     self._config.feature_set_version or ctx.feature_set_version
                 ),
+                forecast_mode=self._forecast_mode,
+                forecast_prices=forecast_prices,
+                forecast_returns=forecast_returns,
             )
         except Exception as e:
             logger.exception("TimesFM inference failed: %s", e)
@@ -125,7 +139,7 @@ class TimesFMPredictor(Predictor):
             current_price = float(snapshot.price)
             if not closes or closes[-1] != current_price:
                 closes.append(current_price)
-            return closes[-self._config.context_length:]
+            return closes[-self._config.context_length :]
 
         return list(self._price_history)
 
@@ -146,14 +160,28 @@ class TimesFMPredictor(Predictor):
             )
             return []
 
-    def _select_forecast_price(self, point_forecast: Any) -> float:
+    def _parse_forecast_prices(self, point_forecast: Any) -> list[float]:
         forecast = np.asarray(point_forecast, dtype=np.float64)
         row = forecast[0]
-        idx = self._config.forecast_index
-        if idx < 0:
-            idx = len(row) + idx
-        idx = max(0, min(idx, len(row) - 1))
-        return float(row[idx])
+        return [float(p) for p in row[: self._config.horizon]]
+
+    def _step_returns(
+        self, current_price: float, forecast_prices: list[float]
+    ) -> list[float]:
+        if current_price <= 0:
+            return [0.0 for _ in forecast_prices]
+        return [(p - current_price) / current_price for p in forecast_prices]
+
+    def _aggregate_return(self, forecast_returns: list[float]) -> float:
+        if not forecast_returns:
+            return 0.0
+        if self._forecast_mode == "last":
+            idx = self._config.forecast_index
+            if idx < 0:
+                idx = len(forecast_returns) + idx
+            idx = max(0, min(idx, len(forecast_returns) - 1))
+            return float(forecast_returns[idx])
+        return float(sum(forecast_returns) / len(forecast_returns))
 
     def _to_action(self, expected_return: float) -> SignalAction:
         if expected_return > self._threshold:
@@ -199,4 +227,5 @@ class TimesFMPredictor(Predictor):
             },
             model_version=self._config.model_version,
             feature_set_version=self._config.feature_set_version,
+            forecast_mode=self._forecast_mode,
         )

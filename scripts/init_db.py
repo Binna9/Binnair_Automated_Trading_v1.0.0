@@ -42,6 +42,8 @@ def init_db(drop_existing: bool = False, config_path: Path | str | None = None) 
     print("Creating tables...")
     Base.metadata.create_all(engine)
 
+    _apply_table_comments(engine, schema)
+
     # position_snapshot DDL 확장 (기존 DB 호환 migration)
     _migrate_position_snapshot(engine, schema)
 
@@ -61,6 +63,22 @@ def init_db(drop_existing: bool = False, config_path: Path | str | None = None) 
         )
         tables = [row[0] for row in result]
         print("Tables:", tables)
+
+
+def _apply_table_comments(engine, schema: str) -> None:
+    """PostgreSQL COMMENT ON TABLE 적용 (신규·기존 DB 모두 idempotent)."""
+    with engine.connect() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.schema and table.schema != schema:
+                continue
+            comment = table.comment
+            if not comment:
+                continue
+            qualified = f'"{schema}"."{table.name}"'
+            escaped = comment.replace("'", "''")
+            conn.execute(text(f"COMMENT ON TABLE {qualified} IS '{escaped}'"))
+        conn.commit()
+    print("Table comments applied.")
 
 
 def _migrate_position_snapshot(engine, schema: str) -> None:
