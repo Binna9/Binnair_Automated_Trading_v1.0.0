@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "src"))
 
@@ -48,7 +49,10 @@ def _pids_on_port_unix(port: int) -> set[int]:
         ["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
         ["fuser", f"{port}/tcp"],
     ):
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            continue
         if result.returncode != 0 and not result.stdout.strip():
             continue
         pids: set[int] = set()
@@ -60,9 +64,18 @@ def _pids_on_port_unix(port: int) -> set[int]:
     return set()
 
 
+def _should_skip_port_kill() -> bool:
+    """Docker/운영 — lsof 없고 포트 충돌도 없음. 로컬 dev 전용."""
+    if os.environ.get("BINNAIR_SKIP_PORT_KILL", "").lower() in ("1", "true", "yes"):
+        return True
+    if Path("/.dockerenv").exists():
+        return True
+    return False
+
+
 def kill_process_on_port(port: int) -> list[int]:
     """지정 포트 LISTEN 중인 프로세스 종료. 종료한 PID 목록 반환."""
-    if port <= 0:
+    if port <= 0 or _should_skip_port_kill():
         return []
 
     if sys.platform == "win32":
