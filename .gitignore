@@ -25,8 +25,8 @@ ENV/
 .env.*
 trade.env
 
-# legacy config (yaml 제거 — env만 사용)
-config/
+# legacy yaml config (repo root only — src/.../config/ 패키지와 구분)
+/config/
 
 # 데이터 / 상태 / 로그
 data/
