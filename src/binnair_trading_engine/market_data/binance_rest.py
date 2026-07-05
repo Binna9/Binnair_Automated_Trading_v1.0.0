@@ -9,6 +9,8 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
+from binnair_trading_engine.infra.timezone import now_kst
+
 import httpx
 
 from binnair_trading_engine.domain.models import MarketSnapshot, OhlcvCandle
@@ -45,7 +47,7 @@ class BinanceRestMarketData:
             return MarketSnapshot(
                 symbol=symbol,
                 price=price,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=now_kst(),
                 run_id=run_id,
                 correlation_id=str(uuid.uuid4()),
             )

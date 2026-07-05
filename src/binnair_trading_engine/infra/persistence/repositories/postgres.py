@@ -6,7 +6,9 @@ DTO를 SQLAlchemy ORM으로 변환해 insert, upsert, query를 수행한다.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+
+from binnair_trading_engine.infra.timezone import ensure_kst, kst_today_start, now_kst
 from typing import TYPE_CHECKING
 
 from sqlalchemy import bindparam, func, select, text
@@ -62,10 +64,8 @@ def _get_session_factory():
     return _session_factory_cache
 
 
-def _ensure_utc(dt: datetime | None) -> datetime:
-    if dt is None:
-        return datetime.now(timezone.utc)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+def _ensure_kst(dt: datetime | None) -> datetime:
+    return ensure_kst(dt)
 
 
 def _session_scope():
@@ -99,8 +99,8 @@ class OhlcvCandlePostgresRepository(_BasePostgresRepository):
             {
                 "symbol": c.symbol,
                 "timeframe": c.timeframe,
-                "open_time": _ensure_utc(c.open_time),
-                "close_time": _ensure_utc(c.close_time),
+                "open_time": _ensure_kst(c.open_time),
+                "close_time": _ensure_kst(c.close_time),
                 "open": c.open,
                 "high": c.high,
                 "low": c.low,
@@ -222,7 +222,7 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
             row = session.execute(stmt).scalars().first()
             if row:
                 row.status = status
-                row.stopped_at = datetime.now(timezone.utc)
+                row.stopped_at = now_kst()
                 session.commit()
         except Exception as e:
             session.rollback()
@@ -372,8 +372,8 @@ class OrderRequestPostgresRepository(_BasePostgresRepository):
                     correlation_id=r.correlation_id or "",
                     reduce_only=r.reduce_only,
                     position_side=r.position_side,
-                    created_at=_ensure_utc(r.requested_at),
-                    updated_at=_ensure_utc(r.requested_at),
+                    created_at=_ensure_kst(r.requested_at),
+                    updated_at=_ensure_kst(r.requested_at),
                 )
                 for r in rows
             ]
@@ -419,9 +419,7 @@ class OrderExecutionPostgresRepository(_BasePostgresRepository):
         """당일 실현손익 (SELL +, BUY -). order_request와 join해 side 사용."""
         session = self._session()
         try:
-            today = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            today = kst_today_start()
             schema = OrderExecutionModel.__table__.schema or "trade"
             stmt = text(f"""
                 SELECT req.side, ex.executed_price, ex.executed_quantity
@@ -483,8 +481,10 @@ class PositionSnapshotPostgresRepository(_BasePostgresRepository):
         self, symbols: list[str], user_id: str = "default"
     ) -> list[dict]:
         """
-        심볼별 최신 OPEN 포지션 스냅샷 반환.
-        run_id 무관, snapshot_at 기준 최신 1건/심볼. user_id로 사용자별 필터.
+        심볼별 **최신** position_snapshot이 OPEN일 때만 반환.
+
+        append-only 이력이므로 status=OPEN 필터만 쓰면
+        CLOSED 이후에도 과거 OPEN 행이 복구되는 문제가 있다.
         """
         if not symbols:
             return []
@@ -492,12 +492,17 @@ class PositionSnapshotPostgresRepository(_BasePostgresRepository):
         try:
             schema = PositionSnapshotModel.__table__.schema or "trade"
             stmt = text(f"""
-                SELECT DISTINCT ON (symbol)
-                    id, run_id, strategy_id, symbol, side, quantity, avg_entry_price,
-                    tp_price, sl_price, status, opened_at, snapshot_at
-                FROM "{schema}".position_snapshot
-                WHERE status = 'OPEN' AND symbol IN :symbols AND user_id = :user_id
-                ORDER BY symbol, snapshot_at DESC
+                SELECT id, run_id, strategy_id, symbol, side, quantity, avg_entry_price,
+                       tp_price, sl_price, status, opened_at, snapshot_at
+                FROM (
+                    SELECT DISTINCT ON (symbol)
+                        id, run_id, strategy_id, symbol, side, quantity, avg_entry_price,
+                        tp_price, sl_price, status, opened_at, snapshot_at
+                    FROM "{schema}".position_snapshot
+                    WHERE symbol IN :symbols AND user_id = :user_id
+                    ORDER BY symbol, snapshot_at DESC
+                ) latest
+                WHERE latest.status = 'OPEN' AND latest.quantity > 0
             """).bindparams(bindparam("symbols", expanding=True))
             result = session.execute(stmt, {"symbols": symbols, "user_id": user_id})
             rows = result.fetchall()
@@ -627,8 +632,8 @@ class TradeResultPostgresRepository(_BasePostgresRepository):
                 is_win=dto.is_win,
                 exit_reason=dto.exit_reason,
                 correlation_id=dto.correlation_id or "",
-                opened_at=_ensure_utc(dto.opened_at),
-                closed_at=_ensure_utc(dto.closed_at),
+                opened_at=_ensure_kst(dto.opened_at),
+                closed_at=_ensure_kst(dto.closed_at),
                 hold_seconds=dto.hold_seconds,
                 paper_mode=dto.paper_mode,
                 position_snapshot_id=dto.position_snapshot_id,
@@ -666,8 +671,8 @@ class TradeResultPostgresRepository(_BasePostgresRepository):
                 is_win=dto.is_win,
                 exit_reason=dto.exit_reason,
                 correlation_id=dto.correlation_id or "",
-                opened_at=_ensure_utc(dto.opened_at),
-                closed_at=_ensure_utc(dto.closed_at),
+                opened_at=_ensure_kst(dto.opened_at),
+                closed_at=_ensure_kst(dto.closed_at),
                 hold_seconds=dto.hold_seconds,
                 paper_mode=dto.paper_mode,
                 position_snapshot_id=dto.position_snapshot_id,
@@ -675,7 +680,7 @@ class TradeResultPostgresRepository(_BasePostgresRepository):
             session.add(m)
             session.flush()
 
-            closed_at = _ensure_utc(dto.closed_at)
+            closed_at = _ensure_kst(dto.closed_at)
             period_date = closed_at.date()
             is_win, is_loss, is_be = win_loss_flags(dto.realized_pnl)
             win_inc = 1 if is_win else 0
@@ -814,7 +819,7 @@ class EquitySnapshotPostgresRepository(_BasePostgresRepository):
             m = EquitySnapshotModel(
                 user_id=dto.user_id or "default",
                 run_id=dto.run_id,
-                snapshot_at=_ensure_utc(dto.snapshot_at),
+                snapshot_at=_ensure_kst(dto.snapshot_at),
                 snapshot_date=dto.snapshot_date,
                 equity_usdt=dto.equity_usdt,
                 cumulative_realized_pnl=dto.cumulative_realized_pnl,

@@ -1,7 +1,9 @@
 # BinnAIR Monitor API — 전체 레퍼런스
 
-> **read-only** API. 엔진 start/stop, 주문 제어 없음.  
-> DB 이력 조회 + 거래소(testnet) 지갑 조회만 제공한다.
+> **read-only** HTTP API + **실시간 WebSocket**. 엔진 start/stop, 주문 제어 없음.  
+> DB 이력(REST) + 거래소 지갑·포지션(**WebSocket**, REST 스냅샷) 제공.
+
+**실시간 연동:** [WEBSOCKET_API.md](./WEBSOCKET_API.md)
 
 ---
 
@@ -12,7 +14,8 @@
 | 실행 | `py scripts/run_api.py` |
 | Base URL | `http://127.0.0.1:8000` (`config.yaml` → `api.host` / `api.port`) |
 | Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
-| HTTP Method | **GET only** |
+| HTTP Method | **GET only** (WebSocket 별도) |
+| WebSocket | `ws://127.0.0.1:8000/ws/v1/live` — [WEBSOCKET_API.md](./WEBSOCKET_API.md) |
 | 인증 | 없음 (v1) |
 | Content-Type | `application/json` |
 | datetime 형식 | ISO 8601 (예: `2026-07-03T08:00:00+00:00`) |
@@ -46,7 +49,9 @@
 |---|--------|------|-------------|------|
 | 1 | GET | `/health` | 서버 | 헬스체크 |
 | 2 | GET | `/api/v1/dashboard` | Postgres | 대시보드 요약 |
-| 3 | GET | `/api/v1/account/wallet` | Binance API | testnet 지갑·sizing 진단 |
+| 3 | GET | `/api/v1/account/wallet` | Binance REST | 지갑 스냅샷·sizing 진단 (WS 폴백) |
+| 3b | GET | `/api/v1/live/status` | 서버 | WebSocket 브리지 연결 상태 |
+| 3c | WS | `/ws/v1/live` | Binance WS | **실시간** 지갑·포지션·체결 — [WEBSOCKET_API.md](./WEBSOCKET_API.md) |
 | 4 | GET | `/api/v1/engine-runs` | Postgres | 엔진 실행 세션 목록 |
 | 5 | GET | `/api/v1/engine-runs/{run_id}` | Postgres | 실행 세션 상세 |
 | 6 | GET | `/api/v1/positions/open` | Postgres | 현재 OPEN 포지션 |
@@ -59,6 +64,14 @@
 | 13 | GET | `/api/v1/performance/summary` | Postgres | 성과 요약 (승률·PnL) |
 | 14 | GET | `/api/v1/performance/periods` | Postgres | 일/주/월 성과 시계열 |
 | 15 | GET | `/api/v1/performance/trades` | Postgres | 청산 거래 목록 |
+| **16** | GET | **`/api/v1/history/summary`** | Postgres | **엔진 이력 요약 (권장)** |
+| **17** | GET | **`/api/v1/history/orders`** | Postgres | **주문 내역** |
+| **18** | GET | **`/api/v1/history/executions`** | Postgres | **체결( fill ) 내역** |
+| **19** | GET | **`/api/v1/history/positions`** | Postgres | **포지션 내역** |
+| **20** | GET | **`/api/v1/history/trades`** | Postgres | **청산 거래 (라운드트rip)** |
+| **21** | GET | **`/api/v1/history`** | Postgres | **통합 조회 (summary + 최근 N건)** |
+
+> **프론트 "내역" 화면**은 `/history/*` 사용 권장. 기존 `/orders`, `/positions`, `/performance/trades`는 하위 호환.
 
 ---
 
@@ -108,8 +121,8 @@ GET /api/v1/dashboard?user_id=default&run_id=testnet_timesfm_run&symbol=XRPUSDT
 
 ### 3.3 `GET /api/v1/account/wallet`
 
-`config.yaml`의 `exchange` 설정(API 키, testnet URL)으로 **Binance Futures testnet** 지갑을 실시간 조회한다.  
-엔진 sizing에 쓰는 USDT 잔고와 주문 가능 여부를 진단할 때 사용한다.
+`config.yaml`의 `exchange` 설정으로 **Binance Futures** 지갑을 조회한다 (testnet/mainnet은 `base_url`로 구분).  
+**실시간 갱신은 WebSocket `/ws/v1/live` 사용.** 이 REST는 초기 로딩·폴백용.
 
 **Query** — 없음 (config 기준)
 
@@ -124,8 +137,10 @@ GET /api/v1/account/wallet
 | 필드 | 설명 |
 |------|------|
 | `ok` | 조회 성공 여부 |
+| `environment` | `futures_testnet` \| `futures_mainnet` \| `paper` |
 | `paper_mode` | 종이거래 모드 여부 |
-| `base_url` | 거래소 URL (testnet) |
+| `base_url` | 거래소 REST URL |
+| `stream` | WebSocket 베이스 URL·구독 채널 힌트 |
 | `balances` | 자산별 잔고 (USDT, BTC 등) |
 | `account` | `available_balance`, `total_wallet_balance`, `can_trade` 등 |
 | `positions` | 거래소 선물 포지션 (현재 계정 기준) |
@@ -491,6 +506,89 @@ GET /api/v1/performance/trades?run_id=testnet_timesfm_run&symbol=XRPUSDT&limit=5
 
 ---
 
+## 3.16 엔진 이력 API (`/api/v1/history/*`)
+
+엔진이 DB에 기록한 **주문·체결·포지션·청산 거래**를 프론트 "내역" 탭 단위로 제공한다.  
+모든 엔드포인트에 `run_id` 지정을 권장한다 (`config.run_context.run_id`).
+
+### 공통 Query
+
+| 파라미터 | 설명 |
+|----------|------|
+| `user_id` | 기본 `default` |
+| `run_id` | 엔진 실행 ID |
+| `symbol` | 예: `XRPUSDT` |
+| `from_at` / `to_at` | ISO8601 기간 (KST 저장) |
+| `limit` | 목록 상한 |
+
+### `GET /api/v1/history/summary`
+
+현재 run 기준 카운트·최근 활동 시각·실현손익 합계.
+
+```
+GET /api/v1/history/summary?run_id=testnet_timesfm_run&symbol=XRPUSDT
+```
+
+| 필드 | 설명 |
+|------|------|
+| `open_positions` | 현재 OPEN (심볼별 최신 1건) |
+| `orders_total` / `orders_filled` / `orders_pending` | 주문 건수 |
+| `executions_total` | 체결 건수 |
+| `closed_positions` / `closed_trades` | CLOSED 스냅샷 / trade_result |
+| `realized_pnl_sum` | 기간 내 청산 PnL 합 |
+| `latest_*_at` | 최근 signal/order/execution/position 시각 |
+
+### `GET /api/v1/history/orders`
+
+**주문 내역** — `order_request` + 체결 요약.
+
+추가 Query: `side` (BUY\|SELL), `fill_status` (PENDING\|FILLED\|REJECTED\|CANCELLED)
+
+| 필드 | 설명 |
+|------|------|
+| `fill_status` | PENDING=order_id만 있음, FILLED=체결됨, REJECTED=order_id 없음 |
+| `filled_qty` / `avg_fill_price` / `executed_at` | 체결 정보 (없으면 null) |
+| `reduce_only` | 청산 주문 여부 |
+
+> **주의:** `signal_event` BUY와 다름. 신호만 있고 주문 없으면 이 API에 안 나온다.
+
+### `GET /api/v1/history/executions`
+
+**체결 내역** — `order_execution` flat 목록.
+
+| 필드 | 설명 |
+|------|------|
+| `executed_qty` / `executed_price` | 체결 수량·가격 |
+| `notional_usdt` | price × qty |
+| `status` | 거래소 체결 상태 (보통 FILLED) |
+
+### `GET /api/v1/history/positions`
+
+**포지션 내역** — `position_snapshot`.
+
+추가 Query: `status` (OPEN\|CLOSED), `open_only=true` (심볼별 최신 OPEN 1건)
+
+| status | 의미 |
+|--------|------|
+| OPEN | 진입 시점 (TP/SL, unrealized_pnl) |
+| CLOSED | 청산 시점 (realized_pnl, exit_reason, duration_seconds) |
+
+### `GET /api/v1/history/trades`
+
+**청산 완료 거래** — `trade_result` (진입→청산 1라운드).
+
+`/performance/trades`와 동일 데이터, `holding_seconds` 필드 추가.
+
+### `GET /api/v1/history`
+
+대시보드용 **통합 조회**. `run_id` **필수**. summary + orders/executions/positions/trades 각 `recent_limit`건.
+
+```
+GET /api/v1/history?run_id=testnet_timesfm_run&recent_limit=20
+```
+
+---
+
 ## 4. 데이터 흐름 (참고)
 
 ```text
@@ -516,9 +614,9 @@ GET /api/v1/performance/trades?run_id=testnet_timesfm_run&symbol=XRPUSDT&limit=5
 | `position_snapshot` | positions, dashboard |
 | `signal_event` | signals, timeline |
 | `model_inference_event` | inferences, timeline |
-| `order_request` / `order_execution` | orders, timeline |
+| `order_request` / `order_execution` | orders, timeline, **history/orders, history/executions** |
 | `audit_log` | audit-logs, timeline |
-| `trade_result` | performance/* |
+| `trade_result` | performance/*, **history/trades** |
 | `performance_daily` | performance/periods (day) |
 | `equity_snapshot` | performance/summary (return_pct) |
 
@@ -544,6 +642,14 @@ curl "http://127.0.0.1:8000/api/v1/performance/periods?run_id=testnet_timesfm_ru
 
 # 타임라인
 curl "http://127.0.0.1:8000/api/v1/flow/timeline?run_id=testnet_timesfm_run&limit=30"
+
+# 엔진 이력 (권장)
+curl "http://127.0.0.1:8000/api/v1/history/summary?run_id=testnet_timesfm_run"
+curl "http://127.0.0.1:8000/api/v1/history/orders?run_id=testnet_timesfm_run&limit=20"
+curl "http://127.0.0.1:8000/api/v1/history/executions?run_id=testnet_timesfm_run"
+curl "http://127.0.0.1:8000/api/v1/history/positions?run_id=testnet_timesfm_run&status=CLOSED"
+curl "http://127.0.0.1:8000/api/v1/history/trades?run_id=testnet_timesfm_run"
+curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_limit=10"
 ```
 
 ---

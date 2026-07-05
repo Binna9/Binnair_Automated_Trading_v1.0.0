@@ -12,6 +12,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from binnair_trading_engine.infra.timezone import now_kst
+
 if TYPE_CHECKING:
     from binnair_trading_engine.domain.models import EngineContext, Order, OrderIntent
 
@@ -73,8 +75,8 @@ class StateManager:
                 strategy_id=ctx.strategy_id,
                 model_version=ctx.model_version,
                 feature_set_version=ctx.feature_set_version,
-                last_heartbeat_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                last_heartbeat_at=now_kst(),
+                updated_at=now_kst(),
             )
         self._save()
 
@@ -82,14 +84,14 @@ class StateManager:
         """엔진 종료."""
         if self._state:
             self._state.phase = EnginePhase.STOPPED  # type: ignore
-            self._state.updated_at = datetime.utcnow()
+            self._state.updated_at = now_kst()
             self._save()
 
     def heartbeat(self) -> None:
         """주기적 heartbeat."""
         if self._state:
-            self._state.last_heartbeat_at = datetime.utcnow()
-            self._state.updated_at = datetime.utcnow()
+            self._state.last_heartbeat_at = now_kst()
+            self._state.updated_at = now_kst()
             self._save()
 
     def update_position(self, intent: "OrderIntent", order: "Order") -> None:

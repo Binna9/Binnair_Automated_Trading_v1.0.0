@@ -1,37 +1,21 @@
 """
-HTTP URL ↔ handler 정의.
+HTTP URL ↔ handler (flow·dashboard·performance).
 
-GET /api/v1/dashboard, /positions, /flow/timeline 등 엔드포인트.
-쿼리 파라미터(user_id, run_id, symbol)를 받아 repository 호출 후 JSON 반환.
-
-왜 필요: Postman/프론트가 호출하는 URL 계약(URL, method, params)만 담당.
-DB·비즈니스 로직은 repository에 위임한다.
+GET /api/v1/dashboard, /positions, /flow/timeline 등.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from binnair_trading_engine.api.common.parse import parse_date, parse_datetime
+from binnair_trading_engine.api.common.serialize import serialize
 from binnair_trading_engine.api.deps import ConfigDep, PerformanceRepoDep, RepoDep
-from binnair_trading_engine.api.serialize import serialize
-from binnair_trading_engine.api.wallet_service import fetch_wallet_info
+from binnair_trading_engine.api.services.live_hub import get_live_hub
+from binnair_trading_engine.api.services.wallet_service import fetch_wallet_info
 
 router = APIRouter(prefix="/api/v1")
-
-
-def _parse_date(value: str | None) -> date | None:
-    if not value:
-        return None
-    return date.fromisoformat(value[:10])
-
-
-def _parse_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    text = value.replace("Z", "+00:00")
-    return datetime.fromisoformat(text)
 
 
 @router.get("/dashboard")
@@ -51,8 +35,16 @@ def get_account_wallet(cfg: ConfigDep) -> dict[str, Any]:
     """
     config.exchange(testnet) 지갑·포지션 조회.
     엔진 sizing에 쓰는 USDT availableBalance와 주문 가능 여부 진단 포함.
+    실시간 갱신은 WebSocket `/ws/v1/live` 사용.
     """
     return fetch_wallet_info(cfg)
+
+
+@router.get("/live/status")
+def get_live_stream_status() -> dict[str, Any]:
+    """WebSocket live 브리지 연결 상태 (User Data Stream / mark price)."""
+    hub = get_live_hub()
+    return {"ok": True, **hub.get_status()}
 
 
 @router.get("/engine-runs")
@@ -189,8 +181,8 @@ def get_performance_summary(
             user_id=user_id,
             run_id=run_id,
             symbol=symbol,
-            from_at=_parse_datetime(from_at),
-            to_at=_parse_datetime(to_at),
+            from_at=parse_datetime(from_at),
+            to_at=parse_datetime(to_at),
         )
     )
 
@@ -212,8 +204,8 @@ def get_performance_periods(
         user_id=user_id,
         run_id=run_id,
         granularity=granularity,
-        from_date=_parse_date(from_date),
-        to_date=_parse_date(to_date),
+        from_date=parse_date(from_date),
+        to_date=parse_date(to_date),
         limit=limit,
     )
     return {"granularity": granularity, "items": serialize(items), "count": len(items)}
@@ -234,8 +226,8 @@ def list_performance_trades(
         user_id=user_id,
         run_id=run_id,
         symbol=symbol,
-        from_at=_parse_datetime(from_at),
-        to_at=_parse_datetime(to_at),
+        from_at=parse_datetime(from_at),
+        to_at=parse_datetime(to_at),
         limit=limit,
     )
     return {"items": serialize(items), "count": len(items)}

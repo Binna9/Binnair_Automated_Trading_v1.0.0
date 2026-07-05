@@ -2,7 +2,7 @@
 API 응답용 복합 DTO.
 
 테이블 1개 = persistence/dto.py (EngineRunDTO, PositionSnapshotDTO 등)
-화면 1장 = api/dto.py (DashboardSummaryDTO, FlowTimelineItemDTO 등)
+화면 1장 = api/dto/flow.py (DashboardSummaryDTO, FlowTimelineItemDTO 등)
 
 왜 필요: DB 테이블 DTO만으로는 "대시보드 요약", "타임라인 한 줄" 같은
 여러 테이블을 묶은 응답 형태를 표현하기 어렵다.

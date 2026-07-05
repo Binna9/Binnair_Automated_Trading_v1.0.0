@@ -44,10 +44,19 @@ class TimesFMPredictor(Predictor):
         self._model: Any = None
         self._price_history_provider = price_history_provider
         self._price_history_provider_failed = False
-        self._threshold = (
-            config.fee_rate * 2.0
-            + config.slippage_rate
-            + config.safety_margin
+        if config.signal_threshold is not None:
+            self._threshold = float(config.signal_threshold)
+        else:
+            self._threshold = (
+                config.fee_rate * 2.0
+                + config.slippage_rate
+                + config.safety_margin
+            )
+        logger.info(
+            "TimesFM signal threshold: %.6f (%.4f%%), forecast_mode=%s",
+            self._threshold,
+            self._threshold * 100,
+            config.forecast_mode or "average",
         )
         self._forecast_mode = (config.forecast_mode or "average").lower()
         if self._forecast_mode not in ("average", "last"):

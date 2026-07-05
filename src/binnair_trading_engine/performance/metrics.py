@@ -2,16 +2,16 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+
+from binnair_trading_engine.infra.timezone import ensure_kst, now_kst
 
 from binnair_trading_engine.domain.models import Position
 from binnair_trading_engine.infra.persistence.dto import TradeResultCreate
 
 
-def _ensure_utc(dt: datetime | None) -> datetime:
-    if dt is None:
-        return datetime.now(timezone.utc)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+def _ensure_kst(dt: datetime | None) -> datetime:
+    return ensure_kst(dt)
 
 
 def derive_quantity_from_pnl(
@@ -80,8 +80,8 @@ def build_trade_result_create(
     if qty <= 0:
         return None
 
-    opened = _ensure_utc(position.opened_at)
-    closed = _ensure_utc(position.closed_at)
+    opened = _ensure_kst(position.opened_at)
+    closed = _ensure_kst(position.closed_at)
     hold_seconds = max(0, int((closed - opened).total_seconds()))
     notional = entry * qty
     pnl_pct = compute_pnl_pct(position.side, entry, exit_p)

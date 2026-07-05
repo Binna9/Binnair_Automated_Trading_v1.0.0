@@ -5,21 +5,23 @@
 엔진의 write repository(postgres.py)와 역할이 다르다 — 여기는 SELECT만.
 
 왜 필요: "어떤 데이터를 어떻게 가져올지" SQL·조합 로직을
-HTTP 라우트(routes.py)와 분리해 한곳에 모은다.
+HTTP 라우트(flow_controller.py)와 분리해 한곳에 모은다.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from binnair_trading_engine.infra.timezone import kst_today_start, now_kst
 
 from sqlalchemy import select, text
 
-from binnair_trading_engine.api.db import get_db_session
-from binnair_trading_engine.api.dto import (
+from binnair_trading_engine.api.common.db import get_db_session
+from binnair_trading_engine.api.dto.flow import (
     DashboardSummaryDTO,
     FlowTimelineItemDTO,
     OrderFlowDTO,
 )
-from binnair_trading_engine.api.mappers import (
+from binnair_trading_engine.api.common.mappers import (
     to_audit_log_dto,
     to_engine_run_dto,
     to_model_inference_dto,
@@ -28,7 +30,7 @@ from binnair_trading_engine.api.mappers import (
     to_position_snapshot_dto,
     to_signal_event_dto,
 )
-from binnair_trading_engine.api.serialize import dto_to_dict
+from binnair_trading_engine.api.common.serialize import dto_to_dict
 from binnair_trading_engine.infra.persistence.dto import (
     AuditLogDTO,
     EngineRunDTO,
@@ -97,15 +99,19 @@ class FlowQueryRepository:
             schema = PositionSnapshotModel.__table__.schema or "trade"
             sql = f"""
                 SELECT id FROM (
-                    SELECT DISTINCT ON (symbol) id
+                    SELECT DISTINCT ON (symbol) id, status, quantity
                     FROM "{schema}".position_snapshot
-                    WHERE status = 'OPEN' AND user_id = :user_id
+                    WHERE user_id = :user_id
             """
             params: dict = {"user_id": user_id}
             if symbol:
                 sql += " AND symbol = :symbol"
                 params["symbol"] = symbol
-            sql += " ORDER BY symbol, snapshot_at DESC) AS latest_open"
+            sql += """
+                    ORDER BY symbol, snapshot_at DESC
+                ) latest
+                WHERE latest.status = 'OPEN' AND latest.quantity > 0
+            """
             id_rows = session.execute(text(sql), params).all()
             ids = [row[0] for row in id_rows]
             if not ids:
@@ -261,9 +267,7 @@ class FlowQueryRepository:
     ) -> float:
         session = get_db_session()
         try:
-            today = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            today = kst_today_start()
             schema = PositionSnapshotModel.__table__.schema or "trade"
             sql = f"""
                 SELECT COALESCE(SUM(realized_pnl), 0)
@@ -287,9 +291,7 @@ class FlowQueryRepository:
     ) -> int:
         session = get_db_session()
         try:
-            today = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            today = kst_today_start()
             stmt = select(PositionSnapshotModel).where(
                 PositionSnapshotModel.user_id == user_id,
                 PositionSnapshotModel.status == "CLOSED",
@@ -413,7 +415,7 @@ class FlowQueryRepository:
             items.append(
                 FlowTimelineItemDTO(
                     event_type="audit",
-                    event_at=dto.created_at or datetime.now(timezone.utc),
+                    event_at=dto.created_at or now_kst(),
                     run_id=dto.run_id,
                     symbol=(dto.data or {}).get("intent_symbol"),
                     summary=f"Audit {dto.event}"

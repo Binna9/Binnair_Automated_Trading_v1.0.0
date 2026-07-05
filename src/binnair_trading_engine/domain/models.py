@@ -8,6 +8,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from binnair_trading_engine.infra.timezone import now_kst
+
 
 class OrderSide(str, Enum):
     BUY = "BUY"
@@ -44,7 +46,7 @@ class Signal:
     action: SignalAction
     confidence: float = 0.0
     price_hint: float | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=now_kst)
     run_id: str = ""
     strategy_id: str = ""
     model_version: str = ""
@@ -70,8 +72,8 @@ class Order:
     reduce_only: bool = False
     close_position: bool = False
     position_side: str = "BOTH"  # BOTH | LONG | SHORT (Binance Futures)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=now_kst)
+    updated_at: datetime = field(default_factory=now_kst)
 
 
 @dataclass
@@ -90,9 +92,9 @@ class Position:
     tp_price: float | None = None
     sl_price: float | None = None
     status: str = "OPEN"  # OPEN | CLOSED
-    opened_at: datetime = field(default_factory=datetime.utcnow)
+    opened_at: datetime = field(default_factory=now_kst)
     closed_at: datetime | None = None
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=now_kst)
     # 호환성 유지
     position_id: str = ""
     run_id: str = ""
@@ -127,7 +129,7 @@ class Trade:
     price: float
     run_id: str = ""
     correlation_id: str = ""
-    executed_at: datetime = field(default_factory=datetime.utcnow)
+    executed_at: datetime = field(default_factory=now_kst)
     commission: float = 0.0
 
 
@@ -221,7 +223,7 @@ class AuditLog:
     run_id: str
     correlation_id: str = ""
     data: dict = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=now_kst)
 
 
 @dataclass
@@ -233,7 +235,7 @@ class MarketSnapshot:
 
     symbol: str
     price: float
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=now_kst)
     run_id: str = ""
     correlation_id: str = ""
 

@@ -120,8 +120,20 @@ class PredictorTimesFMConfig:
     fee_rate: float = 0.0004
     slippage_rate: float = 0.0005
     safety_margin: float = 0.001
+    # 지정 시 fee/slippage/safety 공식 대신 BUY/SELL 임계값으로 직접 사용. 0.0001 = 0.01%
+    signal_threshold: float | None = None
     model_version: str = "timesfm-2.5-200m"
     feature_set_version: str = "price-history-v1"
+
+
+@dataclass
+class LiveStreamConfig:
+    """Binance User Data Stream → API WebSocket 브리지 설정."""
+
+    enabled: bool = True
+    mark_price_enabled: bool = True
+    listen_key_keepalive_seconds: int = 1800
+    reconnect_delay_seconds: float = 5.0
 
 
 @dataclass
@@ -132,6 +144,7 @@ class ApiConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     cors_origins: list[str] = field(default_factory=lambda: ["*"])
+    live_stream: LiveStreamConfig = field(default_factory=LiveStreamConfig)
 
 
 @dataclass
@@ -286,6 +299,11 @@ class EngineConfig:
             fee_rate=float(tfm.get("fee_rate", PredictorTimesFMConfig.fee_rate)),
             slippage_rate=float(tfm.get("slippage_rate", PredictorTimesFMConfig.slippage_rate)),
             safety_margin=float(tfm.get("safety_margin", PredictorTimesFMConfig.safety_margin)),
+            signal_threshold=(
+                float(tfm["signal_threshold"])
+                if tfm.get("signal_threshold") is not None
+                else None
+            ),
             model_version=tfm.get("model_version", PredictorTimesFMConfig.model_version),
             feature_set_version=tfm.get("feature_set_version", PredictorTimesFMConfig.feature_set_version),
         ) if tfm else None
@@ -295,11 +313,24 @@ class EngineConfig:
         cors = api.get("cors_origins", default_api.cors_origins)
         if isinstance(cors, str):
             cors = [cors]
+        ls = api.get("live_stream", {})
+        default_ls = default_api.live_stream
+        live_stream_cfg = LiveStreamConfig(
+            enabled=bool(ls.get("enabled", default_ls.enabled)),
+            mark_price_enabled=bool(ls.get("mark_price_enabled", default_ls.mark_price_enabled)),
+            listen_key_keepalive_seconds=int(
+                ls.get("listen_key_keepalive_seconds", default_ls.listen_key_keepalive_seconds)
+            ),
+            reconnect_delay_seconds=float(
+                ls.get("reconnect_delay_seconds", default_ls.reconnect_delay_seconds)
+            ),
+        )
         api_cfg = ApiConfig(
             enabled=bool(api.get("enabled", default_api.enabled)),
             host=api.get("host", default_api.host),
             port=int(api.get("port", default_api.port)),
             cors_origins=list(cors) if cors else default_api.cors_origins,
+            live_stream=live_stream_cfg,
         )
         return cls(
             run_context=run_ctx,

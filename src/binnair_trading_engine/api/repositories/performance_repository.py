@@ -3,58 +3,21 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta
+
+from binnair_trading_engine.infra.timezone import KST
 
 from sqlalchemy import case, func, select, text
 
-from binnair_trading_engine.api.db import get_db_session
-from binnair_trading_engine.api.mappers import to_performance_daily_dto, to_trade_result_dto
+from binnair_trading_engine.api.common.db import get_db_session
+from binnair_trading_engine.api.common.mappers import to_performance_daily_dto, to_trade_result_dto
+from binnair_trading_engine.api.dto.performance import PerformancePeriodRowDTO, PerformanceSummaryDTO
 from binnair_trading_engine.infra.persistence.dto import PerformanceDailyDTO, TradeResultDTO
 from binnair_trading_engine.infra.persistence.models import (
     EquitySnapshotModel,
     PerformanceDailyModel,
     TradeResultModel,
 )
-
-
-@dataclass
-class PerformanceSummaryDTO:
-    user_id: str
-    run_id: str | None
-    symbol: str | None
-    from_at: datetime | None
-    to_at: datetime | None
-    total_trades: int
-    win_count: int
-    loss_count: int
-    breakeven_count: int
-    win_rate: float
-    realized_pnl_total: float
-    avg_pnl_per_trade: float
-    avg_pnl_pct: float
-    gross_profit: float
-    gross_loss: float
-    profit_factor: float | None
-    best_trade_pnl: float | None
-    worst_trade_pnl: float | None
-    return_pct: float | None
-    reference_equity_usdt: float | None
-
-
-@dataclass
-class PerformancePeriodRowDTO:
-    period_start: date
-    period_label: str
-    trade_count: int
-    win_count: int
-    loss_count: int
-    win_rate: float
-    realized_pnl_sum: float
-    avg_pnl_pct: float
-    return_pct: float | None
-    opening_equity_usdt: float | None
-    closing_equity_usdt: float | None
 
 
 class PerformanceQueryRepository:
@@ -315,12 +278,13 @@ class PerformanceQueryRepository:
             if from_date:
                 sql += " AND closed_at >= :from_at"
                 params["from_at"] = datetime.combine(
-                    from_date, datetime.min.time(), tzinfo=timezone.utc
+                    from_date, datetime.min.time(), tzinfo=KST
                 )
             if to_date:
                 sql += " AND closed_at < :to_at"
-                next_day = datetime.combine(to_date, datetime.min.time(), tzinfo=timezone.utc)
-                params["to_at"] = next_day.replace(hour=23, minute=59, second=59)
+                params["to_at"] = datetime.combine(
+                    to_date, datetime.min.time(), tzinfo=KST
+                ) + timedelta(days=1)
             sql += f" GROUP BY {bucket}, {label} ORDER BY period_start DESC LIMIT :lim"
             params["lim"] = max(1, min(limit, 366))
 

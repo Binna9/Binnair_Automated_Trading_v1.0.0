@@ -70,6 +70,7 @@ def create_engine_from_url(
         def _set_search_path(dbapi_conn, connection_record):
             with dbapi_conn.cursor() as cur:
                 cur.execute(f"SET search_path TO {schema}")
+                cur.execute("SET timezone TO 'Asia/Seoul'")
 
     return engine
 

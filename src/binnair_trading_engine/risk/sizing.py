@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from binnair_trading_engine.config.settings import SizingConfig
@@ -63,6 +64,14 @@ class PercentEquitySizingPolicy:
             return SizingResult(0.0, notional, equity, "below_min_order_notional")
 
         quantity = notional / entry_price
+        # 명목 한도 초과 방지: qty×price가 max_notional을 넘지 않도록 내림.
+        if quantity * entry_price > max_notional:
+            quantity = math.floor((max_notional / entry_price) * 1e8) / 1e8
+            notional = quantity * entry_price
+
+        if notional < self._config.min_order_notional_usdt:
+            return SizingResult(0.0, notional, equity, "below_min_order_notional")
+
         return SizingResult(quantity=quantity, notional=notional, equity=equity)
 
     def _stop_distance_pct(

@@ -1,11 +1,5 @@
 """
-FastAPI 의존성(Dependency) 모듈.
-
-- load_config_path(): config/config.yaml 경로를 CONFIG_PATH에 설정
-- get_query_repo(): FlowQueryRepository 싱글톤을 라우트 handler에 주입
-
-왜 필요: 각 API 핸들러가 repository를 직접 만들지 않게 하고,
-config·DB 조회 객체를 FastAPI Depends로 공유한다.
+FastAPI 의존성(Dependency) — repository·config 싱글톤 주입.
 """
 from __future__ import annotations
 
@@ -15,13 +9,17 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from binnair_trading_engine.api.repository import FlowQueryRepository
-from binnair_trading_engine.api.performance_repository import PerformanceQueryRepository
+from binnair_trading_engine.api.repositories.flow_repository import FlowQueryRepository
+from binnair_trading_engine.api.repositories.history_repository import EngineHistoryRepository
+from binnair_trading_engine.api.repositories.performance_repository import (
+    PerformanceQueryRepository,
+)
 from binnair_trading_engine.config import load_config
 from binnair_trading_engine.config.settings import EngineConfig
 
 _query_repo: FlowQueryRepository | None = None
 _performance_repo: PerformanceQueryRepository | None = None
+_history_repo: EngineHistoryRepository | None = None
 _engine_config: EngineConfig | None = None
 
 
@@ -58,6 +56,14 @@ def get_performance_repo() -> PerformanceQueryRepository:
     return _performance_repo
 
 
+def get_history_repo() -> EngineHistoryRepository:
+    global _history_repo
+    if _history_repo is None:
+        _history_repo = EngineHistoryRepository()
+    return _history_repo
+
+
 RepoDep = Annotated[FlowQueryRepository, Depends(get_query_repo)]
 PerformanceRepoDep = Annotated[PerformanceQueryRepository, Depends(get_performance_repo)]
+HistoryRepoDep = Annotated[EngineHistoryRepository, Depends(get_history_repo)]
 ConfigDep = Annotated[EngineConfig, Depends(get_engine_config)]

@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from binnair_trading_engine.infra.timezone import ensure_kst, now_kst
 from typing import TYPE_CHECKING
 
 from binnair_trading_engine.domain.models import Position
@@ -49,7 +51,7 @@ class PositionManager:
         신규 포지션 오픈.
         기존 오픈 포지션이 있으면 덮어쓴다.
         """
-        now = datetime.utcnow()
+        now = now_kst()
         pos = Position(
             symbol=symbol,
             quantity=quantity,
@@ -83,7 +85,7 @@ class PositionManager:
         if pos is None or pos.is_closed():
             return None
 
-        now = datetime.utcnow()
+        now = now_kst()
         # LONG: realized_pnl = (exit - entry) * qty, SHORT: (entry - exit) * qty
         if pos.side == "LONG":
             realized_pnl = (exit_price - pos.avg_entry_price) * pos.quantity
@@ -141,7 +143,7 @@ class PositionManager:
             status=pos.status,
             opened_at=pos.opened_at,
             closed_at=pos.closed_at,
-            updated_at=datetime.utcnow(),
+            updated_at=now_kst(),
             run_id=pos.run_id,
             position_id=pos.position_id,
             unrealized_pnl=pnl,
@@ -182,10 +184,10 @@ class PositionManager:
                 opened_at = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
             except ValueError:
                 opened_at = None
-        if opened_at and getattr(opened_at, "tzinfo", None) is None:
-            opened_at = opened_at.replace(tzinfo=timezone.utc)
+        if opened_at:
+            opened_at = ensure_kst(opened_at)
 
-        now = datetime.utcnow()
+        now = now_kst()
         pos = Position(
             symbol=symbol,
             quantity=quantity,

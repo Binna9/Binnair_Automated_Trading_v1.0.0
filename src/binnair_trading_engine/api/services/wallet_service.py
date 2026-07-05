@@ -9,6 +9,10 @@ from typing import Any
 
 from binnair_trading_engine.config.settings import EngineConfig
 from binnair_trading_engine.exchange import create_exchange
+from binnair_trading_engine.exchange.binance_endpoints import (
+    exchange_environment_label,
+    futures_stream_ws_base,
+)
 from binnair_trading_engine.exchange.binance_futures import BinanceFuturesAdapter
 from binnair_trading_engine.risk.sizing import PercentEquitySizingPolicy
 
@@ -22,6 +26,7 @@ def fetch_wallet_info(config: EngineConfig) -> dict[str, Any]:
         "market_type": exc_cfg.market_type,
         "quote_asset": quote,
         "base_url": exc_cfg.base_url,
+        "environment": exchange_environment_label(exc_cfg.base_url, exc_cfg.paper_mode),
         "ok": False,
         "sizing_config": {
             "min_order_notional_usdt": config.sizing.min_order_notional_usdt,
@@ -44,6 +49,7 @@ def fetch_wallet_info(config: EngineConfig) -> dict[str, Any]:
             "effective_equity": bal,
             "can_create_order": bal > 0,
         }
+        out["stream"] = {"ws_base": None, "mode": "paper_poll"}
         return out
 
     try:
@@ -63,6 +69,11 @@ def fetch_wallet_info(config: EngineConfig) -> dict[str, Any]:
             effective_equity=effective_equity,
             sample_price=_sample_price(config),
         )
+        out["stream"] = {
+            "ws_base": futures_stream_ws_base(exc_cfg.base_url),
+            "user_stream_path": "/ws/{listenKey}",
+            "mark_price_stream": f"{config.market_data.symbol.lower()}@markPrice@1s",
+        }
         return out
 
     out["error"] = {

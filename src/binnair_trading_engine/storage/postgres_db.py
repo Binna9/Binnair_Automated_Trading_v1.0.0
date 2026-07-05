@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime
+
+from binnair_trading_engine.infra.timezone import ensure_kst, now_kst
 
 from ..config import EngineConfig
 from ..domain.models import (
@@ -46,7 +48,7 @@ from .interface import (
 
 
 def _dt(d: datetime | None) -> datetime:
-    return d if d else datetime.now(timezone.utc)
+    return ensure_kst(d) if d else now_kst()
 
 
 def _serialize(o: object) -> dict:

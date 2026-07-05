@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import math
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -58,6 +59,7 @@ class BinanceFuturesAdapter(ExchangeAdapter):
         self._margin_type = margin_type.upper()
         self._position_side_mode = position_side_mode.upper()
         self._symbol_prepared: set[str] = set()
+        self._lot_step: dict[str, float] = {}
 
     @property
     def manages_exit_orders(self) -> bool:
@@ -198,6 +200,35 @@ class BinanceFuturesAdapter(ExchangeAdapter):
     def _format_qty(self, qty: float) -> str:
         return f"{qty:.8f}".rstrip("0").rstrip(".")
 
+    def _lot_step_size(self, symbol: str) -> float:
+        if symbol in self._lot_step:
+            return self._lot_step[symbol]
+        try:
+            data = self._request("GET", "/fapi/v1/exchangeInfo", signed=False)
+        except httpx.HTTPStatusError as e:
+            logger.warning("exchangeInfo fetch failed for %s: %s", symbol, e)
+            return 0.001
+        if not isinstance(data, dict):
+            return 0.001
+        for row in data.get("symbols", []):
+            if row.get("symbol") != symbol:
+                continue
+            for filt in row.get("filters", []):
+                if filt.get("filterType") == "LOT_SIZE":
+                    step = float(filt.get("stepSize", 0.001) or 0.001)
+                    self._lot_step[symbol] = step
+                    return step
+        return 0.001
+
+    def _round_qty_down(self, symbol: str, qty: float) -> float:
+        step = self._lot_step_size(symbol)
+        if step <= 0:
+            return qty
+        rounded = math.floor(qty / step) * step
+        if rounded <= 0:
+            return 0.0
+        return rounded
+
     def _format_price(self, price: float) -> str:
         return f"{price:.8f}".rstrip("0").rstrip(".")
 
@@ -211,6 +242,68 @@ class BinanceFuturesAdapter(ExchangeAdapter):
             "EXPIRED": OrderStatus.CANCELLED,
         }
         return m.get(status.upper(), OrderStatus.PENDING)
+
+    def _apply_order_payload(self, order: Order, data: dict) -> None:
+        """Binance order API 응답을 Order 객체에 반영한다."""
+        order.order_id = str(data.get("orderId", order.order_id or ""))
+        order.client_order_id = data.get("clientOrderId") or order.client_order_id
+        order.status = self._map_status(data.get("status", ""))
+        executed_qty = float(data.get("executedQty", 0) or 0)
+        avg_price = float(data.get("avgPrice", 0) or 0)
+        if executed_qty > 0:
+            order.quantity = executed_qty
+        if avg_price > 0:
+            order.price = avg_price
+
+    def _needs_fill_refresh(self, order: Order) -> bool:
+        if order.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED):
+            return False
+        if order.status != OrderStatus.FILLED:
+            return True
+        return not order.price or order.price <= 0
+
+    def _fallback_fill_price_from_trades(self, order: Order) -> None:
+        if order.price and order.price > 0:
+            return
+        if not order.order_id:
+            return
+        for trade in self.get_recent_trades(order.symbol, limit=20):
+            if trade.order_id == order.order_id and trade.price > 0:
+                order.price = trade.price
+                return
+
+    def _wait_for_market_fill(
+        self,
+        order: Order,
+        max_attempts: int = 5,
+        delay_s: float = 0.2,
+    ) -> Order:
+        """
+        MARKET 주문 직후 Binance가 status=NEW, avgPrice=0 으로 응답하는 경우가 있어
+        get_order로 체결 상태·평균가를 재조회한다.
+        """
+        if order.order_type != OrderType.MARKET or not order.order_id:
+            return order
+        if order.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED):
+            return order
+
+        for attempt in range(max_attempts):
+            if not self._needs_fill_refresh(order):
+                break
+            if attempt > 0:
+                time.sleep(delay_s)
+            refreshed = self.get_order(order.symbol, order.order_id)
+            if refreshed is None:
+                continue
+            order.status = refreshed.status
+            if refreshed.quantity > 0:
+                order.quantity = refreshed.quantity
+            if refreshed.price and refreshed.price > 0:
+                order.price = refreshed.price
+
+        if self._needs_fill_refresh(order):
+            self._fallback_fill_price_from_trades(order)
+        return order
 
     def _prepare_symbol(self, symbol: str, leverage: int | None = None) -> None:
         if symbol in self._symbol_prepared:
@@ -239,11 +332,17 @@ class BinanceFuturesAdapter(ExchangeAdapter):
 
     def place_order(self, order: Order) -> Order:
         self._prepare_symbol(order.symbol)
+        qty = self._round_qty_down(order.symbol, order.quantity)
+        if qty <= 0:
+            logger.warning("Order quantity rounded to zero: %s qty=%s", order.symbol, order.quantity)
+            order.status = OrderStatus.REJECTED
+            return order
+        order.quantity = qty
         params: dict = {
             "symbol": order.symbol,
             "side": order.side.value,
             "type": order.order_type.value,
-            "quantity": self._format_qty(order.quantity),
+            "quantity": self._format_qty(qty),
         }
         if self._position_side_mode == "HEDGE":
             params["positionSide"] = order.position_side
@@ -265,20 +364,27 @@ class BinanceFuturesAdapter(ExchangeAdapter):
         try:
             data = self._request("POST", "/fapi/v1/order", params)
         except httpx.HTTPStatusError as e:
-            logger.exception("Binance futures order failed: %s", e)
+            err_body = ""
+            err_code: int | None = None
+            try:
+                err_body = e.response.text
+                parsed = e.response.json()
+                if isinstance(parsed, dict):
+                    err_code = parsed.get("code")
+                    err_body = parsed.get("msg", err_body)
+            except Exception:
+                pass
+            logger.error(
+                "Binance futures order failed: %s (code=%s msg=%s)",
+                e,
+                err_code,
+                err_body,
+            )
             order.status = OrderStatus.REJECTED
             return order
 
-        order.order_id = str(data.get("orderId", ""))
-        order.client_order_id = data.get("clientOrderId") or order.client_order_id
-        order.status = self._map_status(data.get("status", ""))
-        executed_qty = float(data.get("executedQty", 0) or 0)
-        avg_price = float(data.get("avgPrice", 0) or 0)
-        if executed_qty > 0:
-            order.quantity = executed_qty
-        if avg_price > 0:
-            order.price = avg_price
-        return order
+        self._apply_order_payload(order, data)
+        return self._wait_for_market_fill(order)
 
     def place_exit_orders(
         self,

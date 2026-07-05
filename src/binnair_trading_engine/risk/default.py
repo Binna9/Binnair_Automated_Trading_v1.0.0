@@ -3,7 +3,9 @@
 일손실, 포지션 크기, 명목 금액, 중복 주문 제한을 검사한다.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from binnair_trading_engine.infra.timezone import now_kst
 
 from binnair_trading_engine.domain.models import Order, OrderIntent, OrderSide, Position, TradeContext
 from binnair_trading_engine.risk.checker import RiskCheckResult, RiskChecker
@@ -12,6 +14,9 @@ from binnair_trading_engine.risk.config import (
     DEFAULT_DUPLICATE_ORDER_WINDOW_SECONDS,
     DEFAULT_MAX_POSITION_QTY,
 )
+
+# sizing과 동일 명목 한도에서 qty×price 부동소수점 오차 허용 (USDT).
+_NOTIONAL_TOLERANCE_USDT = 0.05
 
 
 class DefaultRiskChecker(RiskChecker):
@@ -76,14 +81,14 @@ class DefaultRiskChecker(RiskChecker):
         if equity > 0 and intent.price and self._max_position_notional_pct > 0:
             max_notional = equity * self._max_position_notional_pct
             order_notional = abs(intent.quantity * intent.price)
-            if order_notional > max_notional:
+            if order_notional > max_notional + _NOTIONAL_TOLERANCE_USDT:
                 return RiskCheckResult(
                     passed=False,
                     reason=f"max_notional: order={order_notional:.2f} > {max_notional:.2f}",
                 )
 
         # 4. 중복 주문 방지
-        cutoff = datetime.now(timezone.utc) - timedelta(
+        cutoff = now_kst() - timedelta(
             seconds=self._duplicate_window_seconds
         )
         for o in recent_orders:

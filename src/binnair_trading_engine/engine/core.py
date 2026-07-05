@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+
+from binnair_trading_engine.infra.timezone import now_kst
 
 from binnair_trading_engine.config import EngineConfig
 from binnair_trading_engine.domain.models import (
@@ -15,6 +17,7 @@ from binnair_trading_engine.domain.models import (
     MarketSnapshot,
     OrderIntent,
     OrderSide,
+    OrderStatus,
     OrderType,
     Position,
     Prediction,
@@ -73,6 +76,7 @@ class TradingEngine:
         """엔진 시작: DB 포지션 복구, 상태 복구, engine_run 기록."""
         self._state.start(self._ctx)
         self._recover_positions_from_db()
+        self._sync_position_with_exchange(self._config.market_data.symbol)
         self._storage.record_engine_start(
             ctx=self._ctx,
             paper_mode=self._config.exchange.paper_mode,
@@ -119,6 +123,145 @@ class TradingEngine:
                     },
                 )
 
+    def _compute_tp_sl(self, entry_price: float, side: str) -> tuple[float | None, float | None]:
+        """trade_rules 기준 TP/SL 가격 계산."""
+        rules = self._config.trade_rules
+        tp_price: float | None = None
+        sl_price: float | None = None
+        if side == "LONG":
+            if rules.tp_pct > 0:
+                tp_price = entry_price * (1.0 + rules.tp_pct)
+            if rules.sl_pct > 0:
+                sl_price = entry_price * (1.0 - rules.sl_pct)
+        else:
+            if rules.tp_pct > 0:
+                tp_price = entry_price * (1.0 - rules.tp_pct)
+            if rules.sl_pct > 0:
+                sl_price = entry_price * (1.0 + rules.sl_pct)
+        return tp_price, sl_price
+
+    def _sync_position_with_exchange(
+        self,
+        symbol: str,
+        *,
+        mark_price: float | None = None,
+        corr_id: str = "",
+    ) -> None:
+        """
+        PositionManager ↔ 거래소 포지션 양방향 동기화.
+
+        - 로컬 OPEN + 거래소 flat → stale 정리 (DB CLOSED, 청산 주문 없음)
+        - 로컬 없음 + 거래소 보유 → 복구
+        - 양쪽 모두 보유 → 수량·방향 불일치 시 거래소 기준으로 갱신
+        """
+        if self._config.exchange.paper_mode:
+            return
+
+        local = self._position_manager.get_position(symbol)
+        exch = self._exchange.get_position(symbol)
+        exch_qty = exch.quantity if exch is not None else 0.0
+
+        if local is not None and exch_qty <= 0:
+            exit_price = mark_price or local.avg_entry_price
+            logger.warning(
+                "Local OPEN position but exchange is flat; reconciling without order",
+                extra={
+                    "run_id": self._ctx.run_id,
+                    "symbol": symbol,
+                    "local_qty": local.quantity,
+                    "local_side": local.side,
+                    "exit_price": exit_price,
+                },
+            )
+            closed = self._position_manager.close_position(
+                symbol,
+                exit_price=exit_price,
+                exit_reason="EXCHANGE_SYNC",
+            )
+            if closed:
+                self._storage.save_position(closed)
+                self._signal_policy.reset(symbol)
+                ctx = TradeContext(
+                    run_id=self._ctx.run_id,
+                    strategy_id=self._ctx.strategy_id,
+                    model_version=self._ctx.model_version,
+                    feature_set_version=self._ctx.feature_set_version,
+                    symbol=symbol,
+                )
+                self._storage.save_audit(
+                    "position_reconciled",
+                    OrderIntent(
+                        symbol=symbol,
+                        side=OrderSide.SELL if local.is_long() else OrderSide.BUY,
+                        order_type=OrderType.MARKET,
+                        quantity=local.quantity,
+                        reduce_only=True,
+                        position_side=local.side,
+                    ),
+                    ctx,
+                    reason="exchange_flat",
+                    extra_data={
+                        "local_qty": local.quantity,
+                        "realized_pnl": closed.realized_pnl,
+                    },
+                )
+            return
+
+        if local is None and exch is not None and exch_qty > 0:
+            tp_price, sl_price = self._compute_tp_sl(
+                exch.avg_entry_price, exch.side
+            )
+            pos = self._position_manager.open_position(
+                symbol=symbol,
+                side=exch.side,
+                quantity=exch_qty,
+                entry_price=exch.avg_entry_price,
+                tp_price=tp_price,
+                sl_price=sl_price,
+            )
+            self._storage.save_position(pos)
+            logger.info(
+                "Position recovered from exchange",
+                extra={
+                    "run_id": self._ctx.run_id,
+                    "symbol": pos.symbol,
+                    "entry": pos.avg_entry_price,
+                    "quantity": pos.quantity,
+                    "tp": tp_price,
+                    "sl": sl_price,
+                },
+            )
+            return
+
+        if local is not None and exch is not None and exch_qty > 0:
+            qty_diff = abs(local.quantity - exch_qty)
+            if local.side != exch.side or qty_diff > max(1e-6, exch_qty * 1e-6):
+                logger.info(
+                    "Reconciling local position from exchange",
+                    extra={
+                        "run_id": self._ctx.run_id,
+                        "symbol": symbol,
+                        "local_qty": local.quantity,
+                        "exchange_qty": exch_qty,
+                        "local_side": local.side,
+                        "exchange_side": exch.side,
+                    },
+                )
+                pos = self._position_manager.open_position(
+                    symbol=symbol,
+                    side=exch.side,
+                    quantity=exch_qty,
+                    entry_price=exch.avg_entry_price or local.avg_entry_price,
+                    opened_at=local.opened_at,
+                    tp_price=local.tp_price,
+                    sl_price=local.sl_price,
+                )
+                self._storage.save_position(pos)
+
+    def _recover_position_from_exchange(self, symbol: str) -> None:
+        """하위 호환 alias — `_sync_position_with_exchange` 사용."""
+        self._sync_position_with_exchange(symbol)
+
     def stop(self) -> None:
         """엔진 종료: 열린 포지션 청산(설정 시), engine_run status 업데이트."""
         if self._shutdown_done:
@@ -139,10 +282,34 @@ class TradingEngine:
         logger.info("Engine stopped", extra={"run_id": self._ctx.run_id})
 
     def _flatten_open_positions_on_shutdown(self) -> None:
-        """graceful 종료 시 엔진이 관리 중인 OPEN 포지션을 시장가로 청산한다."""
+        """graceful 종료 시 열린 포지션을 시장가로 청산한다."""
+        symbol = self._config.market_data.symbol
+        self._recover_position_from_exchange(symbol)
+
         run_id = self._ctx.run_id
         corr_id = str(uuid.uuid4())
         open_positions = self._position_manager.list_open_positions()
+        if not open_positions and not self._config.exchange.paper_mode:
+            exch_pos = self._exchange.get_position(symbol)
+            if exch_pos is not None and exch_pos.quantity > 0:
+                tp_price, sl_price = self._compute_tp_sl(
+                    exch_pos.avg_entry_price, exch_pos.side
+                )
+                open_positions = [
+                    Position(
+                        symbol=exch_pos.symbol,
+                        quantity=exch_pos.quantity,
+                        avg_entry_price=exch_pos.avg_entry_price,
+                        side=exch_pos.side,
+                        tp_price=tp_price,
+                        sl_price=sl_price,
+                        status="OPEN",
+                        opened_at=now_kst(),
+                        updated_at=now_kst(),
+                        run_id=run_id,
+                    )
+                ]
+
         if not open_positions:
             return
 
@@ -160,7 +327,7 @@ class TradingEngine:
             snapshot = MarketSnapshot(
                 symbol=pos.symbol,
                 price=price,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=now_kst(),
                 run_id=run_id,
                 correlation_id=corr_id,
             )
@@ -207,6 +374,11 @@ class TradingEngine:
         run_id = self._ctx.run_id
         corr_id = snapshot.correlation_id or str(uuid.uuid4())
         symbol = snapshot.symbol
+
+        # Manager↔거래소 불일치 시 매 tick 동기화 (stale OPEN 정리·복구)
+        self._sync_position_with_exchange(
+            symbol, mark_price=snapshot.price, corr_id=corr_id
+        )
 
         # 1. 포지션 우선 분기: 보유 중이면 predictor skip, exit 로직으로
         pos = self._position_manager.get_position(symbol)
@@ -263,9 +435,9 @@ class TradingEngine:
         if intent is None:
             return
 
-        # 3b. 추가 진입 금지: 이미 포지션 있으면 신규 진입 생성 안 함
+        # 3b. 추가 진입 금지: Manager 기준으로만 판단 (거래소는 위 recover에서 동기화)
         if self._position_manager.has_open_position(symbol):
-            logger.debug(
+            logger.info(
                 "Skip entry: already has open position",
                 extra={"run_id": run_id, "symbol": symbol, "correlation_id": corr_id},
             )
@@ -309,7 +481,7 @@ class TradingEngine:
         # 7. persistence (signal은 이미 신호 생성 시점에 저장됨)
         self._storage.save_order(order)
 
-        if order.status.value == "FILLED":
+        if order.status == OrderStatus.FILLED:
             trade = Trade(
                 trade_id=str(uuid.uuid4()),
                 order_id=order.order_id or "",
@@ -398,8 +570,8 @@ class TradingEngine:
         """
         result = self._exit_manager.check_exit(pos, snapshot)
         if result is not None:
-            if self._exchange.manages_exit_orders:
-                # 거래소 보호주문이 청산을 처리하므로 로컬 TP/SL 청산 주문은 제출하지 않는다.
+            if self._config.exchange.oco_enabled and self._exchange.manages_exit_orders:
+                # 거래소 TP/SL 보호주문이 청산을 처리하므로 로컬 청산 주문은 제출하지 않는다.
                 return
             self._submit_exit_order(
                 snapshot=snapshot,
@@ -452,6 +624,35 @@ class TradingEngine:
         """청산 주문 실행 및 position_snapshot/audit 저장."""
         symbol = snapshot.symbol
         price = snapshot.price
+
+        if intent.reduce_only and not self._config.exchange.paper_mode:
+            exch = self._exchange.get_position(symbol)
+            if exch is None or exch.quantity <= 0:
+                logger.warning(
+                    "Skip reduceOnly exit: exchange has no position",
+                    extra={
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "exit_reason": exit_reason,
+                        "local_qty": pos.quantity,
+                    },
+                )
+                self._sync_position_with_exchange(
+                    symbol, mark_price=price, corr_id=corr_id
+                )
+                return
+            if intent.quantity > exch.quantity + 1e-9:
+                logger.info(
+                    "Clamping exit qty to exchange position",
+                    extra={
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "requested_qty": intent.quantity,
+                        "exchange_qty": exch.quantity,
+                    },
+                )
+                intent.quantity = exch.quantity
+
         execution_price = price
         order = self._exchange.submit_order(intent, execution_price=execution_price)
         if not order:
@@ -462,7 +663,21 @@ class TradingEngine:
         self._state.update_position(intent, order)
         self._storage.save_order(order)
 
-        if order.status.value == "FILLED":
+        if order.status == OrderStatus.REJECTED and intent.reduce_only:
+            logger.warning(
+                "ReduceOnly exit rejected; syncing position with exchange",
+                extra={
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "exit_reason": exit_reason,
+                },
+            )
+            self._sync_position_with_exchange(
+                symbol, mark_price=price, corr_id=corr_id
+            )
+            return
+
+        if order.status == OrderStatus.FILLED:
             trade = Trade(
                 trade_id=str(uuid.uuid4()),
                 order_id=order.order_id or "",
