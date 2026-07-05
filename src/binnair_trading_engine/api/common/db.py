@@ -1,7 +1,7 @@
 """
 API 전용 Postgres 세션.
 
-config.yaml storage 설정으로 DB에 연결해 Session을 반환한다.
+BINNAIR_STORAGE_* 환경변수로 DB에 연결해 Session을 반환한다.
 
 왜 필요: repository가 SQL을 실행하려면 DB 연결이 필요하다.
 엔진 write repository 와 분리해 API는 read-only 세션만 쓴다.

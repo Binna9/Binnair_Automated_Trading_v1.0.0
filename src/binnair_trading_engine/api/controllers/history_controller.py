@@ -10,14 +10,14 @@ from fastapi import APIRouter, HTTPException, Query
 
 from binnair_trading_engine.api.common.parse import parse_datetime
 from binnair_trading_engine.api.common.serialize import serialize
-from binnair_trading_engine.api.deps import HistoryRepoDep
+from binnair_trading_engine.api.deps import HistoryServiceDep
 
 router = APIRouter(prefix="/api/v1/history", tags=["history"])
 
 
 @router.get("/summary")
 def get_history_summary(
-    hist: HistoryRepoDep,
+    hist: HistoryServiceDep,
     user_id: str = Query(default="default"),
     run_id: str | None = Query(default=None, description="엔진 run_id (권장)"),
     symbol: str | None = Query(default=None),
@@ -38,7 +38,7 @@ def get_history_summary(
 
 @router.get("/orders")
 def list_order_history(
-    hist: HistoryRepoDep,
+    hist: HistoryServiceDep,
     user_id: str = Query(default="default"),
     run_id: str | None = Query(default=None),
     symbol: str | None = Query(default=None),
@@ -67,7 +67,7 @@ def list_order_history(
 
 @router.get("/executions")
 def list_execution_history(
-    hist: HistoryRepoDep,
+    hist: HistoryServiceDep,
     user_id: str = Query(default="default"),
     run_id: str | None = Query(default=None),
     symbol: str | None = Query(default=None),
@@ -91,7 +91,7 @@ def list_execution_history(
 
 @router.get("/positions")
 def list_position_history(
-    hist: HistoryRepoDep,
+    hist: HistoryServiceDep,
     user_id: str = Query(default="default"),
     run_id: str | None = Query(default=None),
     symbol: str | None = Query(default=None),
@@ -120,7 +120,7 @@ def list_position_history(
 
 @router.get("/trades")
 def list_trade_history(
-    hist: HistoryRepoDep,
+    hist: HistoryServiceDep,
     user_id: str = Query(default="default"),
     run_id: str | None = Query(default=None),
     symbol: str | None = Query(default=None),
@@ -142,7 +142,7 @@ def list_trade_history(
 
 @router.get("")
 def get_history_overview(
-    hist: HistoryRepoDep,
+    hist: HistoryServiceDep,
     user_id: str = Query(default="default"),
     run_id: str | None = Query(default=None),
     symbol: str | None = Query(default=None),

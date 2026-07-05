@@ -43,6 +43,19 @@ class PassthroughStrategy(Strategy):
         self._exchange = exchange
         self._quote_asset = quote_asset
         self._fallback_equity_usdt = max(0.0, fallback_equity_usdt)
+        self._position_scale = 1.0
+
+    def set_dynamic_exit(
+        self,
+        *,
+        tp_pct: float,
+        sl_pct: float,
+        position_scale: float = 1.0,
+    ) -> None:
+        """Autopilot — ATR 기반 TP/SL % 및 포지션 축소."""
+        self._tp_pct = max(0.0, tp_pct)
+        self._sl_pct = max(0.0, sl_pct)
+        self._position_scale = max(0.1, min(1.0, position_scale))
 
     def decide(
         self,
@@ -97,7 +110,9 @@ class PassthroughStrategy(Strategy):
             entry_price=entry_price,
             stop_loss_price=stop_loss_price,
         )
-        return result.quantity if result.is_valid else 0.0
+        if not result.is_valid:
+            return 0.0
+        return result.quantity * self._position_scale
 
     def _get_equity(self) -> float:
         if self._exchange is None:

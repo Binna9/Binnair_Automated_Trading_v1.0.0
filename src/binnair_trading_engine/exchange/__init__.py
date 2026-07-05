@@ -34,7 +34,7 @@ def create_exchange(config) -> ExchangeAdapter:
     if not cfg.exchange.api_key or not cfg.exchange.api_secret:
         raise ValueError(
             "exchange.paper_mode=false 시 api_key, api_secret 필수. "
-            "config.yaml의 exchange.api_key, exchange.api_secret 설정."
+            ".env 의 BINNAIR_EXCHANGE_API_KEY, BINNAIR_EXCHANGE_API_SECRET 설정."
         )
     if market_type == "futures":
         return BinanceFuturesAdapter(

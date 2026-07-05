@@ -1,0 +1,27 @@
+.git
+.github
+.venv
+env
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.idea
+.vscode
+.DS_Store
+
+# 로컬 시크릿
+.env
+.env.*
+trade.env
+key/
+data/
+logs/
+*.log
+
+dist/
+build/
+*.egg-info/
+
+# 모델 캐시는 이미지에 넣지 않음 (볼륨 사용)
+models/

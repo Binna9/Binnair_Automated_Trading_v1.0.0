@@ -5,7 +5,7 @@ TimesFM 입력 히스토리를 백필하거나 상시 적재하는 운영 스크
 
 보통은 run_engine.py가 이 스크립트를 subprocess로 호출한다.
 단독 실행 예:
-  CONFIG_PATH=config/config.yaml .venv/bin/python scripts/ingest_ohlcv.py --loop
+  .venv/bin/python scripts/ingest_ohlcv.py --loop
 """
 from __future__ import annotations
 
@@ -30,11 +30,9 @@ logger = logging.getLogger("ingest_ohlcv")
 
 
 def _ensure_config_path() -> None:
-    if os.environ.get("CONFIG_PATH"):
-        return
-    default_config = Path(__file__).resolve().parent.parent / "config" / "config.yaml"
-    if default_config.exists():
-        os.environ["CONFIG_PATH"] = str(default_config)
+    from binnair_trading_engine.config.env_loader import load_env_file
+
+    load_env_file()
 
 
 def parse_args() -> argparse.Namespace:

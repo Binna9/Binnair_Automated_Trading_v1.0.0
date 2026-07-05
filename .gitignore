@@ -20,15 +20,13 @@ MANIFEST
 env/
 ENV/
 
-# Environment / secrets (API key, DB password 등)
+# Environment / secrets
 .env
 .env.*
-!.env.example
+trade.env
 
-# 설정 (비밀번호 포함 가능 → 로컬용만 사용, example은 커밋)
-config/config.yaml
-config/config.local.yaml
-config/*.local.yaml
+# legacy config (yaml 제거 — env만 사용)
+config/
 
 # 데이터 / 상태 / 로그
 data/

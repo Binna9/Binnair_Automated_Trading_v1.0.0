@@ -21,10 +21,8 @@ from binnair_trading_engine.infra.persistence.session import (
 )
 
 
-def init_db(drop_existing: bool = False, config_path: Path | str | None = None) -> None:
+def init_db(drop_existing: bool = False) -> None:
     """테이블 생성. drop_existing=True 시 기존 스키마/테이블 삭제 후 생성."""
-    if config_path is not None:
-        os.environ["CONFIG_PATH"] = str(config_path)
 
     url = get_database_url()
     schema = get_storage_schema()
@@ -235,21 +233,13 @@ def _backfill_trade_result_from_snapshots(engine, schema: str) -> None:
     print(f"trade_result backfill: {inserted} rows from position_snapshot.")
 
 
-def _default_config_path() -> Path | None:
-    """--config/CONFIG_PATH 미지정 시 기본 config 경로 탐색."""
-    root = Path(__file__).resolve().parent.parent
-    for name in ("config/config.yaml", "config.yaml"):
-        p = root / name
-        if p.exists():
-            return p
-    return None
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="DB 초기화 (config 기반)")
+    from binnair_trading_engine.config.env_loader import load_env_file
+
+    load_env_file()
+
+    parser = argparse.ArgumentParser(description="DB 초기화 (.env.dev / trade.env 기준)")
     parser.add_argument("--drop", action="store_true", help="기존 스키마/테이블 삭제 후 생성")
-    parser.add_argument("--config", type=str, help="config 파일 경로 (미지정 시 config/config.yaml 탐색)")
     args = parser.parse_args()
 
-    config_path = Path(args.config) if args.config else _default_config_path()
-    init_db(drop_existing=args.drop, config_path=config_path)
+    init_db(drop_existing=args.drop)

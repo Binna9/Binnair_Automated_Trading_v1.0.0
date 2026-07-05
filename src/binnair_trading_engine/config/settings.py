@@ -1,6 +1,6 @@
 """
 엔진 설정 구조와 기본값을 정의한다.
-YAML/환경변수에서 읽은 값을 RunContext, Exchange, Storage, Sizing, Risk 설정으로 변환한다.
+.env.dev / .env 의 BINNAIR_* 환경변수를 EngineConfig 로 변환한다.
 """
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+from binnair_trading_engine.autopilot.models import AutopilotConfig
 
 
 @dataclass
@@ -28,8 +28,8 @@ class ExchangeConfig:
     adapter_type: str = "binance"  # 거래소 어댑터 타입. 현재 구현은 binance 전용.
     market_type: str = "futures"  # 시장 타입: "spot"(현물) | "futures"(선물 USD-M).
     paper_mode: bool = True  # True=로컬 모의거래, False=거래소 API(실거래/테스트넷) 사용.
-    api_key: str = "xlgGWr2oz7HVDC3HIEc215eh6FL5yMc5zKT8DjQgFTUJKslnx5q0rG7u0YjHYsXj"  # 테스트넷/실거래 API Key.
-    api_secret: str = "WUKjcGfFbe7B4uL2CevElu8UGMrPjyugQuvEfZAlN6Zh86n36TUYMQ1kNB5DOKVu"  # 테스트넷/실거래 API Secret.
+    api_key: str = ""
+    api_secret: str = ""
     base_url: str = "https://testnet.binancefuture.com"  # Binance Futures Testnet URL.
     leverage: int = 3  # 선물 레버리지 배수. market_type="futures"에서만 적용.
     margin_type: str = "ISOLATED"  # 선물 마진 모드: "ISOLATED"(격리) | "CROSSED"(교차).
@@ -45,7 +45,7 @@ class StorageConfig:
     port: int = 5432
     dbname: str = "binnair"
     user: str = "binnair"
-    password: str = "hun380638@@"
+    password: str = ""
     schema: str = "trade"
 
     def to_database_url(self) -> str:
@@ -166,6 +166,7 @@ class EngineConfig:
     persist_model_inference: bool = False  # BUY/SELL 시에만 model_inference_event 저장
     flatten_on_shutdown: bool = True  # graceful 종료 시 열린 포지션 시장가 청산
     api: ApiConfig = field(default_factory=ApiConfig)
+    autopilot: AutopilotConfig = field(default_factory=AutopilotConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EngineConfig":
@@ -332,6 +333,32 @@ class EngineConfig:
             cors_origins=list(cors) if cors else default_api.cors_origins,
             live_stream=live_stream_cfg,
         )
+        ap = data.get("autopilot", {})
+        default_ap = AutopilotConfig()
+        autopilot_cfg = AutopilotConfig(
+            enabled=bool(ap.get("enabled", default_ap.enabled)),
+            score_window=int(ap.get("score_window", default_ap.score_window)),
+            score_min_samples=int(ap.get("score_min_samples", default_ap.score_min_samples)),
+            score_percentile=float(ap.get("score_percentile", default_ap.score_percentile)),
+            score_k=float(ap.get("score_k", default_ap.score_k)),
+            atr_period=int(ap.get("atr_period", default_ap.atr_period)),
+            ema_fast=int(ap.get("ema_fast", default_ap.ema_fast)),
+            ema_slow=int(ap.get("ema_slow", default_ap.ema_slow)),
+            vol_lookback=int(ap.get("vol_lookback", default_ap.vol_lookback)),
+            high_vol_ratio=float(ap.get("high_vol_ratio", default_ap.high_vol_ratio)),
+            low_vol_ratio=float(ap.get("low_vol_ratio", default_ap.low_vol_ratio)),
+            trend_slope_threshold=float(
+                ap.get("trend_slope_threshold", default_ap.trend_slope_threshold)
+            ),
+            base_tp_atr_mult=float(ap.get("base_tp_atr_mult", default_ap.base_tp_atr_mult)),
+            base_sl_atr_mult=float(ap.get("base_sl_atr_mult", default_ap.base_sl_atr_mult)),
+            base_consecutive_required=int(
+                ap.get("base_consecutive_required", signal_policy_cfg.consecutive_required)
+            ),
+            status_log_every_ticks=int(
+                ap.get("status_log_every_ticks", default_ap.status_log_every_ticks)
+            ),
+        )
         return cls(
             run_context=run_ctx,
             exchange=exc_cfg,
@@ -349,20 +376,13 @@ class EngineConfig:
             persist_model_inference=data.get("persist_model_inference", False),
             flatten_on_shutdown=bool(data.get("flatten_on_shutdown", True)),
             api=api_cfg,
+            autopilot=autopilot_cfg,
         )
 
 
-def load_config(config_path: Path | str | None = None) -> EngineConfig:
-    """
-    설정 로드. 경로 미지정 시 기본값 반환.
-    환경변수 CONFIG_PATH 사용 가능.
-    """
-    import os
-    path = config_path or os.environ.get("CONFIG_PATH")
-    if path:
-        p = Path(path)
-        if p.exists():
-            with open(p, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            return EngineConfig.from_dict(data)
-    return EngineConfig.from_dict({})
+def load_config() -> EngineConfig:
+    """`.env.dev`(개발) / `trade.env`(운영) 또는 compose env_file → BINNAIR_* 로드."""
+    from binnair_trading_engine.config.env_loader import config_from_environ, load_env_file
+
+    load_env_file()
+    return config_from_environ()

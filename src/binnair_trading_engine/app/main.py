@@ -14,7 +14,6 @@ import time
 def main() -> int:
     """CLI 진입점."""
     parser = argparse.ArgumentParser(description="BinnAIR 자동매매 엔진")
-    parser.add_argument("-c", "--config", type=str, default=None, help="설정 YAML 경로")
     parser.add_argument(
         "-i", "--interval", type=float, default=None,
         help="run_cycle 간격(초). market_data.enabled 시 poll_interval_seconds 사용",
@@ -29,7 +28,7 @@ def main() -> int:
     from binnair_trading_engine.app.bootstrap import bootstrap
     from binnair_trading_engine.market_data import create_market_data_provider
 
-    engine = bootstrap(args.config)
+    engine = bootstrap()
     md_cfg = engine._config.market_data
 
     provider = None

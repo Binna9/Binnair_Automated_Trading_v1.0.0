@@ -12,7 +12,7 @@
 | 항목 | 값 |
 |------|-----|
 | 실행 | `py scripts/run_api.py` |
-| Base URL | `http://127.0.0.1:8000` (`config.yaml` → `api.host` / `api.port`) |
+| Base URL | `http://127.0.0.1:8000` (로컬 `.env.dev` → `BINNAIR_API_HOST` / `BINNAIR_API_PORT`) |
 | Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
 | HTTP Method | **GET only** (WebSocket 별도) |
 | WebSocket | `ws://127.0.0.1:8000/ws/v1/live` — [WEBSOCKET_API.md](./WEBSOCKET_API.md) |
@@ -121,7 +121,7 @@ GET /api/v1/dashboard?user_id=default&run_id=testnet_timesfm_run&symbol=XRPUSDT
 
 ### 3.3 `GET /api/v1/account/wallet`
 
-`config.yaml`의 `exchange` 설정으로 **Binance Futures** 지갑을 조회한다 (testnet/mainnet은 `base_url`로 구분).  
+`BINNAIR_EXCHANGE_*` 환경변수로 **Binance Futures** 지갑을 조회한다 (testnet/mainnet은 `BINNAIR_EXCHANGE_BASE_URL`로 구분).  
 **실시간 갱신은 WebSocket `/ws/v1/live` 사용.** 이 REST는 초기 로딩·폴백용.
 
 **Query** — 없음 (config 기준)
@@ -657,4 +657,4 @@ curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_lim
 ## 6. 관련 문서
 
 - [API_FRONTEND.md](./API_FRONTEND.md) — 프론트 화면 구성·DTO TypeScript·UI 팁
-- [config/config.yaml](../config/config.yaml) — `api`, `exchange`, `run_context` 설정
+- [.env.dev](../.env.dev) (로컬, gitignore) — `BINNAIR_*` 설정

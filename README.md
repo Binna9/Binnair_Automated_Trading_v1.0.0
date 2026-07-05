@@ -79,7 +79,8 @@ src/binnair_trading_engine/
 │   ├── bootstrap.py       # 설정 로드, DI, 엔진 인스턴스 생성
 │   └── main.py            # CLI 진입점
 ├── config/                 # 설정
-│   └── settings.py        # EngineConfig, load_config (YAML/환경변수)
+│   ├── settings.py        # EngineConfig, load_config
+│   └── env_loader.py      # BINNAIR_* 환경변수 → EngineConfig
 ├── domain/                 # 도메인 모델 (엔진 내부 사용 객체)
 │   └── models.py          # Signal, Order, Position, Trade, Prediction, MarketSnapshot 등
 ├── engine/                 # 엔진 코어
@@ -128,11 +129,13 @@ scripts/
 ├── init_db.py                    # DB 테이블 생성 및 position_snapshot migration
 ├── ingest_ohlcv.py               # Binance OHLCV 캔들 적재 (TimesFM 입력 히스토리)
 ├── run_engine.py                 # OHLCV 적재 + 매매 엔진 한 번에 실행
-├── verify_testnet_connection.py  # 테스트넷/DB/시세 연결 점검
+├── run_api.py                    # 조회 API 서버
 └── download_timesfm_weights.py   # TimesFM 가중치 다운로드
 
-config/
-└── config.yaml            # 설정 (storage.backend=postgres 필요 시 직접 생성)
+.env.dev                 # 로컬 개발 설정 (gitignore, BINNAIR_*)
+compose.trading.yml      # binnair-stack compose.yml에 붙여 넣을 서비스 스니펫
+Dockerfile.engine / Dockerfile.api
+bin/                     # 서버 재기동·DB 초기화 스크립트
 ```
 
 ---
@@ -142,7 +145,7 @@ config/
 | 모듈 | 역할 |
 |------|------|
 | **app** | bootstrap: 설정 로드 → DI → TradingEngine. main: CLI 진입점 |
-| **config** | YAML/환경변수 기반 EngineConfig. run_context, exchange, storage, trade_rules, predictor_type 등 |
+| **config** | `.env.dev` / `BINNAIR_*` 환경변수 기반 EngineConfig |
 | **domain** | Signal, Order, Position, Trade, Prediction, MarketSnapshot 등 엔진 내부 사용 객체 |
 | **engine** | TradingEngine: process_tick(시세→진입/청산), 포지션 우선 분기, DB 복구 |
 | **exchange** | ExchangeAdapter. PaperExchangeAdapter / BinanceSpotAdapter |
@@ -155,6 +158,25 @@ config/
 | **storage** | Order/Signal/Position/Trade/Audit 저장. PostgresDbStorage (backend=postgres) |
 | **state** | StateManager: start/stop/heartbeat, JSON 파일 persist |
 | **strategy** | Strategy.decide → OrderIntent. ExitManager: TP/SL 도달 여부 판단 |
+
+---
+
+## 설정
+
+로컬은 프로젝트 루트 `.env.dev` ( `BINNAIR_ENV=dev` ), 서버는 `binnair-stack/env/trade.env` ( `BINNAIR_ENV=prod` ).
+
+```bash
+# 로컬 API
+BINNAIR_API_HOST=127.0.0.1
+BINNAIR_API_PORT=8000
+
+# 서버 (compose.trading.yml)
+BINNAIR_STORAGE_HOST=postgres
+BINNAIR_API_HOST=0.0.0.0
+BINNAIR_API_PORT=8001
+BINNAIR_STATE_PERSIST_PATH=/data/state/engine_state.json
+HF_HOME=/data/huggingface
+```
 
 ---
 
@@ -180,10 +202,10 @@ python scripts/init_db.py --drop
 
 ```bash
 # 최근 1분봉 500개를 DB ohlcv_candle에 upsert
-CONFIG_PATH=config/config.yaml python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 500
+.venv/bin/python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 500
 
 # 계속 적재 (스케줄러/상시 프로세스용)
-CONFIG_PATH=config/config.yaml python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 30 --loop --poll-interval 60
+.venv/bin/python scripts/ingest_ohlcv.py --symbol BTCUSDT --timeframe 1m --limit 30 --loop --poll-interval 60
 ```
 
 TimesFM 사용 시 권장 흐름:
@@ -199,7 +221,7 @@ DB 히스토리가 `min_context`보다 부족하면 엔진 tick으로 쌓은 in-
 
 ```bash
 pip install -e .
-binnair-engine -c config/config.yaml
+binnair-engine
 ```
 
 ### TimesFM 3회 시그널 정책
@@ -264,12 +286,11 @@ CLOSED 행에는 다음 컬럼이 저장됨:
 
 ---
 
-## 실거래 (Binance Spot)
+## 실거래 (Binance Futures)
 
-`config.yaml`에서 `exchange.paper_mode: false`, `api_key`, `api_secret` 설정 시 Binance Spot 실거래.
+`.env.dev` 또는 `trade.env`에서 `BINNAIR_EXCHANGE_PAPER_MODE=false`, `BINNAIR_EXCHANGE_API_KEY`, `BINNAIR_EXCHANGE_API_SECRET` 설정.
 
-- `BinanceSpotAdapter`: place_order, cancel_order, get_position, get_order 등 REST
-- 테스트넷: `base_url: "https://testnet.binance.vision"`
+- 테스트넷: `BINNAIR_EXCHANGE_BASE_URL=https://testnet.binancefuture.com`
 
 ---
 

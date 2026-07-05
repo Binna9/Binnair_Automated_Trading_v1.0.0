@@ -3,7 +3,7 @@
 OHLCV 적재 루프와 자동매매 엔진을 한 번에 실행한다.
 
 기본 동작:
-1. config.yaml에서 symbol/timeframe/주기를 읽는다.
+1. .env.dev / trade.env 에서 symbol/timeframe/주기를 읽는다.
 2. 시작 시 OHLCV 백필(최근 1000개) 1회 실행.
 3. ingest_ohlcv.py --loop 백그라운드 실행.
 4. binnair_trading_engine.app.main 포그라운드 실행.
@@ -11,7 +11,6 @@ OHLCV 적재 루프와 자동매매 엔진을 한 번에 실행한다.
 
 사용 예:
   .venv/bin/python scripts/run_engine.py
-  .venv/bin/python scripts/run_engine.py -c config/config.yaml
   .venv/bin/python scripts/run_engine.py --ingest-only
 """
 from __future__ import annotations
@@ -32,7 +31,6 @@ logger = logging.getLogger("run_engine")
 
 PROCS: list[subprocess.Popen] = []
 _ENGINE_PROC: subprocess.Popen | None = None
-_CONFIG_PATH: Path | None = None
 _SHUTTING_DOWN = False
 _GRACE_SECONDS = 15
 
@@ -49,14 +47,13 @@ def _python_bin() -> str:
     return sys.executable
 
 
-def _mark_engine_stopped(config_path: Path) -> None:
+def _mark_engine_stopped() -> None:
     """자식이 강제 종료돼 stop() 못 탔을 때 engine_run status 보정."""
-    os.environ["CONFIG_PATH"] = str(config_path)
     try:
         from binnair_trading_engine.config import load_config
         from binnair_trading_engine.storage import create_storage
 
-        cfg = load_config(config_path)
+        cfg = load_config()
         if cfg.storage.backend != "postgres":
             return
         storage = create_storage(cfg)
@@ -100,8 +97,8 @@ def _shutdown(exit_code: int = 0) -> None:
             logger.warning("Engine did not exit in %ss, killing", _GRACE_SECONDS)
             _ENGINE_PROC.kill()
 
-    if _CONFIG_PATH is not None and _ENGINE_PROC is not None:
-        _mark_engine_stopped(_CONFIG_PATH)
+    if _ENGINE_PROC is not None:
+        _mark_engine_stopped()
 
     for proc in PROCS:
         if proc is _ENGINE_PROC:
@@ -126,7 +123,6 @@ def _handle_signal(signum: int, _frame: object) -> None:
 
 def _run_backfill(
     python_bin: str,
-    config_path: Path,
     symbol: str,
     timeframe: str,
     base_url: str,
@@ -145,14 +141,11 @@ def _run_backfill(
         base_url,
     ]
     logger.info("Running OHLCV backfill: %s", " ".join(cmd))
-    env = os.environ.copy()
-    env["CONFIG_PATH"] = str(config_path)
-    subprocess.run(cmd, cwd=ROOT, env=env, check=True)
+    subprocess.run(cmd, cwd=ROOT, env=os.environ.copy(), check=True)
 
 
 def _start_ingest(
     python_bin: str,
-    config_path: Path,
     symbol: str,
     timeframe: str,
     poll_interval: float,
@@ -175,26 +168,16 @@ def _start_ingest(
         str(poll_interval),
     ]
     logger.info("Starting OHLCV loop: %s", " ".join(cmd))
-    env = os.environ.copy()
-    env["CONFIG_PATH"] = str(config_path)
-    proc = subprocess.Popen(cmd, cwd=ROOT, env=env)
+    proc = subprocess.Popen(cmd, cwd=ROOT, env=os.environ.copy())
     PROCS.append(proc)
     return proc
 
 
-def _start_engine(python_bin: str, config_path: Path) -> subprocess.Popen:
+def _start_engine(python_bin: str) -> subprocess.Popen:
     global _ENGINE_PROC
-    cmd = [
-        python_bin,
-        "-m",
-        "binnair_trading_engine.app.main",
-        "-c",
-        str(config_path),
-    ]
+    cmd = [python_bin, "-m", "binnair_trading_engine.app.main"]
     logger.info("Starting trading engine: %s", " ".join(cmd))
-    env = os.environ.copy()
-    env["CONFIG_PATH"] = str(config_path)
-    popen_kw: dict = {"cwd": ROOT, "env": env}
+    popen_kw: dict = {"cwd": ROOT, "env": os.environ.copy()}
     if sys.platform == "win32":
         popen_kw["creationflags"] = _CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(cmd, **popen_kw)
@@ -206,12 +189,6 @@ def _start_engine(python_bin: str, config_path: Path) -> subprocess.Popen:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run OHLCV ingestion loop and trading engine together.",
-    )
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="config/config.yaml",
-        help="Config YAML path (default: config/config.yaml)",
     )
     parser.add_argument(
         "--no-backfill",
@@ -254,18 +231,9 @@ def main() -> int:
         logger.error("--ingest-only and --engine-only cannot be used together.")
         return 1
 
-    config_path = Path(args.config).resolve()
-    if not config_path.exists():
-        logger.error("Config not found: %s", config_path)
-        return 1
-
-    global _CONFIG_PATH
-    _CONFIG_PATH = config_path
-    os.environ["CONFIG_PATH"] = str(config_path)
-
     from binnair_trading_engine.config import load_config
 
-    cfg = load_config(config_path)
+    cfg = load_config()
     symbol = cfg.market_data.symbol
     timeframe = (
         cfg.predictor_timesfm_config.timeframe
@@ -285,7 +253,6 @@ def main() -> int:
     if run_ingest and not args.no_backfill:
         _run_backfill(
             python_bin=python_bin,
-            config_path=config_path,
             symbol=symbol,
             timeframe=timeframe,
             base_url=base_url,
@@ -295,7 +262,6 @@ def main() -> int:
     if run_ingest:
         _start_ingest(
             python_bin=python_bin,
-            config_path=config_path,
             symbol=symbol,
             timeframe=timeframe,
             poll_interval=poll_interval,
@@ -304,7 +270,7 @@ def main() -> int:
         )
 
     if run_engine:
-        _start_engine(python_bin=python_bin, config_path=config_path)
+        _start_engine(python_bin=python_bin)
 
     if not PROCS:
         logger.error("No process started.")

@@ -58,6 +58,7 @@ class TimesFMPredictor(Predictor):
             self._threshold * 100,
             config.forecast_mode or "average",
         )
+        self._initial_threshold = self._threshold
         self._forecast_mode = (config.forecast_mode or "average").lower()
         if self._forecast_mode not in ("average", "last"):
             logger.warning(
@@ -96,6 +97,17 @@ class TimesFMPredictor(Predictor):
         except Exception as e:
             logger.warning("TimesFM model load failed, using HOLD fallback: %s", e)
             self._model = None
+
+    def set_threshold(self, value: float) -> None:
+        """Autopilot — 런타임 adaptive threshold."""
+        if value > 0:
+            self._threshold = float(value)
+
+    def get_threshold(self) -> float:
+        return self._threshold
+
+    def get_initial_threshold(self) -> float:
+        return getattr(self, "_initial_threshold", self._threshold)
 
     def predict(
         self,

@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from binnair_trading_engine.autopilot import AutopilotController
 from binnair_trading_engine.config import load_config
 from binnair_trading_engine.engine import TradingEngine
 from binnair_trading_engine.domain.models import EngineContext
@@ -25,12 +26,12 @@ from binnair_trading_engine.strategy.exit_manager import ExitManager
 logger = logging.getLogger(__name__)
 
 
-def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
+def bootstrap() -> TradingEngine:
     """
     설정 로드 후 엔진 인스턴스 생성.
     paper_trading=True 가 기본값.
     """
-    config = load_config(config_path)
+    config = load_config()
     rc = config.run_context
     ctx = EngineContext(
         version=rc.version,
@@ -55,6 +56,20 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
         mode=config.signal_policy.mode,
     )
 
+    autopilot: AutopilotController | None = None
+    if config.autopilot.enabled:
+        autopilot = AutopilotController(
+            config=config.autopilot,
+            timesfm_config=config.predictor_timesfm_config,
+            price_history_provider=price_history_provider,
+        )
+        logger.info(
+            "Autopilot enabled (score_window=%d, base_tp_atr=%.1f, base_sl_atr=%.1f)",
+            config.autopilot.score_window,
+            config.autopilot.base_tp_atr_mult,
+            config.autopilot.base_sl_atr_mult,
+        )
+
     engine = TradingEngine(
         config=config,
         ctx=ctx,
@@ -67,5 +82,6 @@ def bootstrap(config_path: str | Path | None = None) -> TradingEngine:
         position_manager=position_manager,
         exit_manager=exit_manager,
         signal_policy=signal_policy,
+        autopilot=autopilot,
     )
     return engine

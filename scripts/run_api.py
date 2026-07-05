@@ -7,24 +7,12 @@ import os
 import re
 import subprocess
 import sys
-
-
 import time
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "src"))
 
 from binnair_trading_engine.api.main import run
 from binnair_trading_engine.config import load_config
-
-
-def _default_config_path() -> Path | None:
-    root = Path(__file__).resolve().parent.parent
-    for name in ("config/config.yaml", "config.yaml"):
-        p = root / name
-        if p.exists():
-            return p
-    return None
 
 
 def _pids_on_port_windows(port: int) -> set[int]:
@@ -116,25 +104,11 @@ def kill_process_on_port(port: int) -> list[int]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BinnAIR monitor API (read-only)")
-    parser.add_argument(
-        "--host",
-        default=None,
-        help="Bind host (default: config.api.host)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=None,
-        help="Bind port (default: config.api.port)",
-    )
-    parser.add_argument("--config", type=str, help="config YAML 경로")
+    parser.add_argument("--host", default=None, help="Bind host (default: BINNAIR_API_HOST)")
+    parser.add_argument("--port", type=int, default=None, help="Bind port (default: BINNAIR_API_PORT)")
     args = parser.parse_args()
 
-    config_path = Path(args.config) if args.config else _default_config_path()
-    if config_path is not None:
-        os.environ["CONFIG_PATH"] = str(config_path)
-
-    cfg = load_config(config_path)
+    cfg = load_config()
     if not cfg.api.enabled:
         print("api.enabled=false — API 서버를 시작하지 않습니다.")
         sys.exit(0)

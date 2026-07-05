@@ -1,0 +1,46 @@
+# binnair-stack/compose.yml 에 붙여 넣기
+# 설정: binnair-stack/env/trade.env (engine + api 공통)
+
+  trading-engine:
+    image: ghcr.io/binna9/binnair-trading-engine:latest
+    container_name: trading-engine
+    restart: unless-stopped
+    env_file:
+      - ./env/trade.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /home/binnair/data/trading-engine:/data
+      - /home/binnair/data/logs/trading-engine:/app/logs
+    networks:
+      - binnair-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  trading-api:
+    image: ghcr.io/binna9/binnair-trading-api:latest
+    container_name: trading-api
+    restart: unless-stopped
+    env_file:
+      - ./env/trade.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks:
+      - binnair-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8001/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"

@@ -407,6 +407,7 @@ class EngineHistoryRepository:
                 orders_total=len(orders),
                 orders_filled=orders_filled,
                 orders_pending=orders_pending,
+                orders_missing_db_execution=0,
                 executions_total=len(executions),
                 closed_positions=closed_positions,
                 closed_trades=len(trades),

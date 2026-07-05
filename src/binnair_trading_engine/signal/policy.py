@@ -38,6 +38,14 @@ class ConsecutiveSignalPolicy:
     def mode(self) -> str:
         return self._mode
 
+    def set_consecutive_required(self, value: int) -> None:
+        """Autopilot — 레짐별 consecutive 조정."""
+        n = max(1, int(value))
+        if n == self._required:
+            return
+        self._required = n
+        self._history = defaultdict(lambda: deque(maxlen=self._required))
+
     def record(self, symbol: str, action: SignalAction) -> None:
         self._history[symbol].append(action)
 

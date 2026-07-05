@@ -11,6 +11,7 @@ from datetime import datetime
 
 from binnair_trading_engine.infra.timezone import now_kst
 
+from binnair_trading_engine.autopilot import AutopilotController
 from binnair_trading_engine.config import EngineConfig
 from binnair_trading_engine.domain.models import (
     EngineContext,
@@ -35,6 +36,7 @@ from binnair_trading_engine.state import StateManager
 from binnair_trading_engine.storage import StorageLayer
 from binnair_trading_engine.strategy import Strategy
 from binnair_trading_engine.strategy.exit_manager import ExitManager
+from binnair_trading_engine.strategy.passthrough import PassthroughStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,7 @@ class TradingEngine:
         position_manager: PositionManager,
         exit_manager: ExitManager,
         signal_policy: ConsecutiveSignalPolicy,
+        autopilot: AutopilotController | None = None,
     ) -> None:
         self._config = config
         self._ctx = ctx
@@ -70,6 +73,7 @@ class TradingEngine:
         self._position_manager = position_manager
         self._exit_manager = exit_manager
         self._signal_policy = signal_policy
+        self._autopilot = autopilot
         self._shutdown_done = False
 
     def start(self) -> None:
@@ -366,6 +370,26 @@ class TradingEngine:
 
         return pos.avg_entry_price
 
+    def _apply_autopilot(self, snapshot: MarketSnapshot) -> None:
+        if self._autopilot is None:
+            return
+        strategy = (
+            self._strategy if isinstance(self._strategy, PassthroughStrategy) else None
+        )
+        self._autopilot.apply_before_predict(
+            symbol=snapshot.symbol,
+            price=float(snapshot.price),
+            predictor=self._predictor,
+            signal_policy=self._signal_policy,
+            strategy=strategy,
+        )
+
+    def _record_autopilot_score(self, pred: Prediction | None) -> None:
+        if self._autopilot is None:
+            return
+        score = pred.score if pred is not None else None
+        self._autopilot.record_prediction_score(score)
+
     def process_tick(self, snapshot: MarketSnapshot) -> None:
         """
         단일 마켓 틱 처리.
@@ -388,7 +412,9 @@ class TradingEngine:
 
         # 2. 포지션 없음 → 기존 predictor → signal → strategy → risk → exchange 흐름
         trade_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
+        self._apply_autopilot(snapshot)
         pred = self._predictor.predict(snapshot, trade_ctx)
+        self._record_autopilot_score(pred)
 
         # Phase 1: Predictor.predict() 직후 model_inference_event 항상 저장
         if pred is not None:
@@ -584,7 +610,9 @@ class TradingEngine:
             return
 
         trade_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
+        self._apply_autopilot(snapshot)
         pred = self._predictor.predict(snapshot, trade_ctx)
+        self._record_autopilot_score(pred)
         if pred is not None:
             self._storage.save_model_inference(snapshot, pred)
         if pred is None:

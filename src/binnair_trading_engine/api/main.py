@@ -2,7 +2,7 @@
 FastAPI 앱 진입점.
 
 - create_app(): FastAPI 인스턴스 생성 (CORS, 라우트 등록)
-- run(): uvicorn으로 서버 기동 (host/port는 config.yaml api 섹션)
+- run(): uvicorn으로 서버 기동 (host/port는 BINNAIR_API_* 환경변수)
 
 왜 필요: HTTP 서버를 켜고 `/docs`, Postman 요청을 받는 시작점.
 엔진 core.py 와는 별도 프로세스로 실행한다.

@@ -29,12 +29,15 @@ class OrderHistoryItemDTO:
     position_side: str
     correlation_id: str
     paper_mode: bool
-    # derived from order_execution
-    fill_status: str  # PENDING | FILLED | REJECTED | CANCELLED | UNKNOWN
+    # derived from order_execution (+ optional exchange reconcile)
+    fill_status: str  # PENDING | FILLED | PARTIAL | REJECTED | CANCELLED | UNKNOWN
     filled_qty: float | None = None
     avg_fill_price: float | None = None
     executed_at: datetime | None = None
     execution_id: int | None = None
+    execution_synced_from_exchange: bool = False
+    exchange_status: str | None = None
+    notional_usdt: float | None = None
 
 
 @dataclass
@@ -58,6 +61,7 @@ class ExecutionHistoryItemDTO:
     paper_mode: bool
     requested_at: datetime | None
     executed_at: datetime
+    synced_from_exchange: bool = False
 
 
 @dataclass
@@ -116,6 +120,7 @@ class EngineHistorySummaryDTO:
     orders_total: int
     orders_filled: int
     orders_pending: int
+    orders_missing_db_execution: int
     executions_total: int
     closed_positions: int
     closed_trades: int
