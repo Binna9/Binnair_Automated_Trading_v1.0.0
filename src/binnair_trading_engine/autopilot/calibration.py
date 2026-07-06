@@ -31,14 +31,20 @@ class ThresholdCalibrator:
             return
         self._scores.append(abs(float(score)))
 
-    def compute_threshold(self, fee_floor: float, fallback: float) -> float:
+    def load_scores(self, scores: list[float]) -> None:
+        """DB warmup — 과거 |score|를 calibrator에 주입 (시간순)."""
+        for value in scores[-self._window :]:
+            self._scores.append(abs(float(value)))
+
+    def compute_threshold(self, min_threshold: float) -> float:
         """
-        percentile(|score|) × k, fee_floor 이상.
-        샘플 부족 시 fallback(설정 signal_threshold 또는 fee_floor).
+        percentile(|score|) × k 로 진화. min_threshold(설정 signal_threshold) 아래로는 내려가지 않음.
+
+        fee_floor는 hard cap이 아니며, min_threshold가 사용자 민감도 하한이다.
         """
-        floor = max(fee_floor, 0.0)
+        floor = max(float(min_threshold), 0.0)
         if len(self._scores) < self._min_samples:
-            return max(floor, fallback)
+            return floor
 
         sorted_vals = sorted(self._scores)
         idx = int(round((self._percentile / 100.0) * (len(sorted_vals) - 1)))

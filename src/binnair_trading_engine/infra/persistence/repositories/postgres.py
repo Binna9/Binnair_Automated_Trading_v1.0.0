@@ -573,6 +573,38 @@ class ModelInferenceEventPostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
+    def get_recent_scores(
+        self,
+        *,
+        run_id: str,
+        symbol: str | None = None,
+        user_id: str = "default",
+        limit: int = 500,
+    ) -> list[float]:
+        """Autopilot warmup — output_prediction.score 시간순(과거→최신)."""
+        session = self._session()
+        try:
+            stmt = (
+                select(ModelInferenceEventModel)
+                .where(ModelInferenceEventModel.user_id == user_id)
+                .where(ModelInferenceEventModel.run_id == run_id)
+                .order_by(ModelInferenceEventModel.inference_at.desc())
+                .limit(max(1, min(limit, 5000)))
+            )
+            if symbol:
+                stmt = stmt.where(ModelInferenceEventModel.symbol == symbol)
+            rows = session.execute(stmt).scalars().all()
+            scores: list[float] = []
+            for row in reversed(rows):
+                pred = row.output_prediction or {}
+                score = pred.get("score")
+                if score is None:
+                    continue
+                scores.append(float(score))
+            return scores
+        finally:
+            session.close()
+
 
 class AuditLogPostgresRepository(_BasePostgresRepository):
     """audit_log 테이블 repository."""

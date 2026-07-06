@@ -175,8 +175,21 @@ def config_from_environ() -> EngineConfig:
             "score_min_samples": _int("BINNAIR_AUTOPILOT_SCORE_MIN_SAMPLES", 30),
             "score_percentile": _float("BINNAIR_AUTOPILOT_SCORE_PERCENTILE", 70.0),
             "score_k": _float("BINNAIR_AUTOPILOT_SCORE_K", 1.0),
+            "atr_period": _int("BINNAIR_AUTOPILOT_ATR_PERIOD", 14),
+            "ema_fast": _int("BINNAIR_AUTOPILOT_EMA_FAST", 12),
+            "ema_slow": _int("BINNAIR_AUTOPILOT_EMA_SLOW", 26),
+            "vol_lookback": _int("BINNAIR_AUTOPILOT_VOL_LOOKBACK", 100),
+            "high_vol_ratio": _float("BINNAIR_AUTOPILOT_HIGH_VOL_RATIO", 1.35),
+            "low_vol_ratio": _float("BINNAIR_AUTOPILOT_LOW_VOL_RATIO", 0.75),
+            "trend_slope_threshold": _float(
+                "BINNAIR_AUTOPILOT_TREND_SLOPE_THRESHOLD", 0.0015
+            ),
             "base_tp_atr_mult": _float("BINNAIR_AUTOPILOT_BASE_TP_ATR_MULT", 2.0),
             "base_sl_atr_mult": _float("BINNAIR_AUTOPILOT_BASE_SL_ATR_MULT", 1.2),
+            "base_consecutive_required": _int(
+                "BINNAIR_AUTOPILOT_BASE_CONSECUTIVE_REQUIRED",
+                _int("BINNAIR_SIGNAL_CONSECUTIVE_REQUIRED", 2),
+            ),
             "status_log_every_ticks": _int("BINNAIR_AUTOPILOT_STATUS_LOG_EVERY_TICKS", 10),
         },
     }

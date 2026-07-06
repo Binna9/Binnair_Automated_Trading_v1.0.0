@@ -47,7 +47,7 @@ class RegimeSnapshot:
 
 @dataclass
 class AutopilotState:
-    """tick마다 갱신 — 로그·API 노출용."""
+    """tick마다 갱신 — 로그·API·JSON persist 노출용."""
 
     enabled: bool = False
     tick_count: int = 0
@@ -59,6 +59,7 @@ class AutopilotState:
     regime_threshold_mult: float = 1.0
     effective_threshold: float = 0.0
     fee_floor: float = 0.0
+    min_threshold: float = 0.0
     score_samples: int = 0
     consecutive_required: int = 2
     tp_pct: float = 0.0
@@ -67,4 +68,7 @@ class AutopilotState:
     sl_atr_mult: float = 0.0
     position_scale: float = 1.0
     symbol: str = ""
+    run_id: str = ""
+    user_id: str = "default"
+    updated_at: str = ""
     extra: dict = field(default_factory=dict)

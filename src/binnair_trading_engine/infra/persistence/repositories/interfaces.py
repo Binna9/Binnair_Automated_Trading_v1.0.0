@@ -82,6 +82,15 @@ class ModelInferenceEventRepository(Protocol):
 
     def create(self, dto: ModelInferenceEventCreate) -> int | None: ...
 
+    def get_recent_scores(
+        self,
+        *,
+        run_id: str,
+        symbol: str | None = None,
+        user_id: str = "default",
+        limit: int = 500,
+    ) -> list[float]: ...
+
 
 class AuditLogRepository(Protocol):
     """audit_log 저장소 인터페이스."""

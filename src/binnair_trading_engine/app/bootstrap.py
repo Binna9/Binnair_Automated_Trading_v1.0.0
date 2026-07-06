@@ -62,6 +62,13 @@ def bootstrap() -> TradingEngine:
             config=config.autopilot,
             timesfm_config=config.predictor_timesfm_config,
             price_history_provider=price_history_provider,
+            state_persist_path=config.state_persist_path,
+        )
+        autopilot.initialize(
+            run_id=rc.run_id,
+            user_id=rc.user_id,
+            symbol=config.market_data.symbol,
+            storage_backend=config.storage.backend,
         )
         logger.info(
             "Autopilot enabled (score_window=%d, base_tp_atr=%.1f, base_sl_atr=%.1f)",
