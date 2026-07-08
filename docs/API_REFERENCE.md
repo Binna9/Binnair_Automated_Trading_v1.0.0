@@ -3,7 +3,7 @@
 > **read-only** HTTP API + **실시간 WebSocket**. 엔진 start/stop, 주문 제어 없음.  
 > DB 이력(REST) + 거래소 지갑·포지션(**WebSocket**, REST 스냅샷) 제공.
 
-**실시간 연동:** [WEBSOCKET_API.md](./WEBSOCKET_API.md)
+**실시간 연동:** 3.3b절 `/ws/v1/live` 참조 (별도 문서로 분리되어 있지 않음).
 
 ---
 
@@ -12,10 +12,10 @@
 | 항목 | 값 |
 |------|-----|
 | 실행 | `py scripts/run_api.py` |
-| Base URL | `http://127.0.0.1:8000` (로컬 `.env.dev` → `BINNAIR_API_HOST` / `BINNAIR_API_PORT`) |
+| Base URL | 로컬 `http://127.0.0.1:8000` (`.env.dev`) / 서버 `http://127.0.0.1:8001`(`trade.env`, 컨테이너 내부 바인딩 — 외부 노출은 리버스 프록시 경로에 따름) |
 | Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
 | HTTP Method | **GET only** (WebSocket 별도) |
-| WebSocket | `ws://127.0.0.1:8000/ws/v1/live` — [WEBSOCKET_API.md](./WEBSOCKET_API.md) |
+| WebSocket | `ws://127.0.0.1:8000/ws/v1/live` — 3.3b절 참조 |
 | 인증 | 없음 (v1) |
 | Content-Type | `application/json` |
 | datetime 형식 | ISO 8601 (예: `2026-07-03T08:00:00+00:00`) |
@@ -28,7 +28,7 @@
 | 파라미터 | 타입 | 기본값 | 설명 |
 |----------|------|--------|------|
 | `user_id` | string | `default` | 사용자별 이력 필터 |
-| `run_id` | string | — | 엔진 실행 세션 ID (`config.run_context.run_id`) |
+| `run_id` | string | — | 엔진 실행 세션 ID (`config.run_context.run_id`). 아래 예시의 `testnet_timesfm_run`은 로컬/테스트넷 기준 예시값이며, 실제 값은 환경별 `BINNAIR_RUN_ID` 설정을 따른다 (예: 운영 `prod_timesfm_run`) |
 | `symbol` | string | — | 거래 심볼 (예: `XRPUSDT`, `BTCUSDT`) |
 | `limit` | int | 엔드포인트별 | 조회 건수 상한 |
 
@@ -51,7 +51,8 @@
 | 2 | GET | `/api/v1/dashboard` | Postgres | 대시보드 요약 |
 | 3 | GET | `/api/v1/account/wallet` | Binance REST | 지갑 스냅샷·sizing 진단 (WS 폴백) |
 | 3b | GET | `/api/v1/live/status` | 서버 | WebSocket 브리지 연결 상태 |
-| 3c | WS | `/ws/v1/live` | Binance WS | **실시간** 지갑·포지션·체결 — [WEBSOCKET_API.md](./WEBSOCKET_API.md) |
+| 3c | WS | `/ws/v1/live` | Binance WS | **실시간** 지갑·포지션·체결 — 3.3b절 참조 |
+| 3d | GET | `/api/v1/autopilot/status` | JSON 파일 | Autopilot 레짐·threshold·TP/SL 진화 상태 |
 | 4 | GET | `/api/v1/engine-runs` | Postgres | 엔진 실행 세션 목록 |
 | 5 | GET | `/api/v1/engine-runs/{run_id}` | Postgres | 실행 세션 상세 |
 | 6 | GET | `/api/v1/positions/open` | Postgres | 현재 OPEN 포지션 |
@@ -154,6 +155,89 @@ GET /api/v1/account/wallet
 
 ---
 
+### 3.3a `GET /api/v1/live/status`
+
+WebSocket 브리지(`BinanceLiveBridge`) 연결 상태만 조회. 스트림 데이터 자체는 아래 3.3b `/ws/v1/live`로 받는다.
+
+**Response**
+
+```json
+{ "ok": true, "user_stream_connected": true, "mark_price_connected": true, "last_error": null, "client_count": 1, "has_snapshot": true }
+```
+
+---
+
+### 3.3b `WS /ws/v1/live`
+
+Binance User Data Stream(지갑/포지션/체결) + mark price 스트림을 그대로 클라이언트에 fan-out하는 실시간 WebSocket. `api/controllers/ws_controller.py`, `api/services/live_hub.py`/`live_bridge.py` 구현.
+
+**연결**
+
+```
+ws://127.0.0.1:8000/ws/v1/live?symbol=XRPUSDT
+```
+
+`symbol`은 선택 — 미지정 시 `config.market_data.symbol` 기준.
+
+**연결 직후 서버 → 클라이언트**
+
+1. 최근 캐시된 스냅샷 (`{"wallet": {...}, "positions": [...], "mark_prices": {...}}`) — 있는 경우
+2. `{"type": "stream_status", "user_stream_connected": ..., "mark_price_connected": ..., "client_count": ...}`
+
+**이후 push되는 message.type**
+
+| type | 의미 |
+|------|------|
+| `wallet_update` | 지갑 잔고 변경 (`balances: [{asset, wallet_balance, cross_wallet_balance}, ...]`) |
+| `position_update` | 포지션 변경 (`symbol, side, quantity, entry_price, unrealized_pnl, margin_type`) |
+| `position_closed` | 포지션 청산 (해당 symbol을 캐시에서 제거) |
+| `mark_price` | mark price 갱신 (`symbol, mark_price`) |
+| `stream_status` | 연결 상태 변경 시 재전송 |
+| `ping` | 30초 keepalive |
+
+**클라이언트 → 서버**: `{"action": "refresh"}` 전송 시 REST 스냅샷 재조회를 트리거할 수 있다 (연결 유지용 텍스트 프레임을 기대하므로 완전히 무응답 연결은 피할 것).
+
+> 서버가 유지하는 최신 스냅샷은 신규 접속 클라이언트에게 즉시 재전송하기 위한 캐시이며, `apply_message()`가 락 안에서 `_merge_state_locked()`로 갱신한다.
+
+---
+
+### 3.3c `GET /api/v1/autopilot/status`
+
+Autopilot(레짐 감지·adaptive threshold·ATR TP/SL) 현재 상태. **DB가 아니라** 엔진이 tick마다 쓰는 `autopilot_state.json`(`BINNAIR_STATE_PERSIST_PATH`와 같은 폴더)을 읽는다 — 조회 시점 엔진 프로세스가 최근에 tick을 돌렸어야 값이 있다.
+
+**Query**
+
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| `run_id` | | 지정 시 저장된 state의 run_id와 일치해야 `available: true` |
+
+**예시**
+
+```
+GET /api/v1/autopilot/status?run_id=prod_timesfm_run
+```
+
+**Response 필드**
+
+| 필드 | 설명 |
+|------|------|
+| `enabled` | Autopilot 활성 여부 (`BINNAIR_AUTOPILOT_ENABLED`) |
+| `available` | state 파일 존재 + run_id 일치 여부 |
+| `regime` | `unknown` \| `normal` \| `high_vol` \| `low_vol` \| `ranging` \| `trending` |
+| `atr` / `atr_pct` | True Range 기반 ATR (절대값 / 가격 대비 %) |
+| `trend_slope` | EMA fast/slow 기울기 (가격 대비) |
+| `base_threshold` / `regime_threshold_mult` / `effective_threshold` | adaptive threshold 계산 과정 (`base × 배수 = effective`) |
+| `fee_floor` / `min_threshold` | 수수료+슬리피지 원가 참고값 / 실제 하한(설정된 signal_threshold 또는 fee_floor) |
+| `score_samples` | 현재 calibrator에 쌓인 |score| 샘플 수 |
+| `consecutive_required` | 현재 tick에 적용 중인 연속 신호 확인 횟수 |
+| `tp_pct` / `sl_pct` / `tp_atr_mult` / `sl_atr_mult` | 현재 ATR 기반 TP/SL % 및 배수 |
+| `position_scale` | 고변동성 레짐에서 포지션 축소 비율 (0.1~1.0) |
+| `state_path` | 읽은 JSON 파일 경로 |
+
+state 파일이 없거나 run_id가 다르면 `available: false`와 `message`만 반환한다 (엔진 미기동, 또는 재기동 직후 첫 tick 전).
+
+---
+
 ### 3.4 `GET /api/v1/engine-runs`
 
 엔진 실행 세션 목록.
@@ -235,7 +319,7 @@ GET /api/v1/positions/open?user_id=default&symbol=XRPUSDT
 |------|------|
 | `realized_pnl` | 실현 손익 (USDT) |
 | `exit_price` | 청산가 |
-| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` |
+| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `SHUTDOWN` \| `EXCHANGE_SYNC` |
 
 **예시**
 
@@ -326,7 +410,7 @@ GET /api/v1/orders?run_id=testnet_timesfm_run&symbol=XRPUSDT
 | `run_id` | — | |
 | `limit` | `100` | 1~500 |
 
-**주요 event:** `risk_rejected`, `position_closed` 등
+**주요 event:** `risk_rejected`(연속 손절 서킷브레이커 발동 시 `reason`에 `consecutive_loss_pause` 포함), `position_closed`, `position_reconciled`(거래소 동기화 중 강제 정리) 등
 
 **예시**
 
@@ -500,7 +584,7 @@ GET /api/v1/performance/trades?run_id=testnet_timesfm_run&symbol=XRPUSDT&limit=5
 | `realized_pnl` | 실현 손익 (USDT) |
 | `pnl_pct` | 거래 수익률 (%) |
 | `is_win` | 승리 여부 |
-| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` |
+| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `SHUTDOWN` \| `EXCHANGE_SYNC` |
 | `opened_at` / `closed_at` | 진입·청산 시각 |
 | `hold_seconds` | 보유 시간(초) |
 
@@ -656,5 +740,6 @@ curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_lim
 
 ## 6. 관련 문서
 
-- [API_FRONTEND.md](./API_FRONTEND.md) — 프론트 화면 구성·DTO TypeScript·UI 팁
-- [.env.dev](../.env.dev) (로컬, gitignore) — `BINNAIR_*` 설정
+- [README.md](../README.md) — 엔진 아키텍처, 모듈 구조, 실행 방법
+- [PERSISTENCE.md](./PERSISTENCE.md) — DB 테이블, DTO, Repository 상세
+- `.env.dev` (로컬, gitignore) / `trade.env` (서버, gitignore) — `BINNAIR_*` 설정. 프론트 전용 문서(API_FRONTEND.md)는 아직 작성되지 않음.
