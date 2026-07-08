@@ -48,7 +48,7 @@ class LiveAccountHub:
     async def apply_message(self, message: dict[str, Any]) -> None:
         """상태 캐시 갱신 후 브로드캐스트."""
         async with self._lock:
-            self._merge_state_locked(message)
+            await self._merge_state_locked(message)
         await self.broadcast(message)
 
     async def _merge_state_locked(self, message: dict[str, Any]) -> None:

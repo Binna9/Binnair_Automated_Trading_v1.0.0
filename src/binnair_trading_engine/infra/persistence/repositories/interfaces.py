@@ -31,6 +31,12 @@ class OhlcvCandleRepository(Protocol):
         timeframe: str,
         limit: int,
     ) -> list[float]: ...
+    def get_recent_ohlc(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[tuple[float, float, float]]: ...
 
 
 class EngineRunRepository(Protocol):

@@ -20,9 +20,16 @@ class PriceHistoryProvider(Protocol):
         limit: int,
     ) -> list[float]: ...
 
+    def get_recent_ohlc(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[tuple[float, float, float]]: ...
+
 
 class OhlcvDbPriceHistoryProvider:
-    """ohlcv_candle 테이블의 close 시계열을 제공한다."""
+    """ohlcv_candle 테이블의 close/OHLC 시계열을 제공한다."""
 
     def __init__(self) -> None:
         from binnair_trading_engine.infra.persistence.repositories.postgres import (
@@ -38,6 +45,19 @@ class OhlcvDbPriceHistoryProvider:
         limit: int,
     ) -> list[float]:
         return self._repo.get_recent_closes(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+        )
+
+    def get_recent_ohlc(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[tuple[float, float, float]]:
+        """(high, low, close) 튜플, 오래된 순 — True Range ATR 계산용."""
+        return self._repo.get_recent_ohlc(
             symbol=symbol,
             timeframe=timeframe,
             limit=limit,

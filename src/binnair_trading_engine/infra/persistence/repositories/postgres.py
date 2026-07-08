@@ -164,6 +164,36 @@ class OhlcvCandlePostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
+    def get_recent_ohlc(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[tuple[float, float, float]]:
+        """최근 (high, low, close) 튜플, 오래된 순. True Range/ATR 계산용."""
+        if limit <= 0:
+            return []
+
+        session = self._session()
+        try:
+            stmt = (
+                select(
+                    OhlcvCandleModel.high,
+                    OhlcvCandleModel.low,
+                    OhlcvCandleModel.close,
+                )
+                .where(
+                    OhlcvCandleModel.symbol == symbol,
+                    OhlcvCandleModel.timeframe == timeframe,
+                )
+                .order_by(OhlcvCandleModel.open_time.desc())
+                .limit(limit)
+            )
+            rows = session.execute(stmt).all()
+            return [(float(h), float(l), float(c)) for h, l, c in reversed(rows)]
+        finally:
+            session.close()
+
 
 class EngineRunPostgresRepository(_BasePostgresRepository):
     """engine_run 테이블 repository."""

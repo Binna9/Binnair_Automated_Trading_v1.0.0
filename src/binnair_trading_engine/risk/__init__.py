@@ -31,5 +31,9 @@ def create_risk_checker(config, exchange=None) -> RiskChecker:
             "duplicate_order_window_seconds",
             180,
         ),
+        max_consecutive_losses=getattr(risk, "max_consecutive_losses", 3),
+        consecutive_loss_pause_minutes=getattr(
+            risk, "consecutive_loss_pause_minutes", 30
+        ),
         equity_provider=_equity_provider,
     )

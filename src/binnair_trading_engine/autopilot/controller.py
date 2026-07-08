@@ -65,7 +65,8 @@ class AutopilotController:
             return float(c.signal_threshold)
         return self._fee_floor()
 
-    def _load_closes(self, symbol: str) -> list[float]:
+    def _load_bars(self, symbol: str) -> list[tuple[float, float, float]]:
+        """(high, low, close) 바 목록 — True Range ATR 계산용."""
         if self._price_history is None:
             return []
         try:
@@ -73,7 +74,7 @@ class AutopilotController:
                 self._cfg.vol_lookback + self._cfg.atr_period + 5,
                 self._cfg.ema_slow + 5,
             )
-            return self._price_history.get_recent_prices(
+            return self._price_history.get_recent_ohlc(
                 symbol=symbol,
                 timeframe=self._timesfm_config.timeframe,
                 limit=need,
@@ -165,8 +166,8 @@ class AutopilotController:
             self.last_state = AutopilotState(enabled=False, symbol=symbol, run_id=self._run_id)
             return self.last_state
 
-        closes = self._load_closes(symbol)
-        regime = self._regime.detect(closes, price)
+        bars = self._load_bars(symbol)
+        regime = self._regime.detect(bars, price)
 
         min_threshold = self._min_threshold()
         fee_floor = self._fee_floor()
@@ -185,6 +186,8 @@ class AutopilotController:
             regime.atr,
             regime.tp_atr_mult,
             regime.sl_atr_mult,
+            min_tp_pct=fee_floor,
+            min_sl_pct=fee_floor,
         )
         if strategy is not None and tp_pct > 0 and sl_pct > 0:
             strategy.set_dynamic_exit(
@@ -216,7 +219,7 @@ class AutopilotController:
             run_id=self._run_id,
             user_id=self._user_id,
             extra={
-                "ohlcv_bars": len(closes),
+                "ohlcv_bars": len(bars),
                 "vol_lookback": self._cfg.vol_lookback,
             },
         )

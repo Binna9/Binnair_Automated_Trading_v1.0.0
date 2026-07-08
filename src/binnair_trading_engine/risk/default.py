@@ -34,6 +34,8 @@ class DefaultRiskChecker(RiskChecker):
         duplicate_window_seconds: int = DEFAULT_DUPLICATE_ORDER_WINDOW_SECONDS,
         max_position_notional_pct: float = 0.20,
         daily_loss_limit_pct: float = 0.03,
+        max_consecutive_losses: int = 3,
+        consecutive_loss_pause_minutes: int = 30,
         equity_provider=None,
     ) -> None:
         self._max_position_qty = max_position_qty
@@ -41,7 +43,11 @@ class DefaultRiskChecker(RiskChecker):
         self._duplicate_window_seconds = duplicate_window_seconds
         self._max_position_notional_pct = max(0.0, max_position_notional_pct)
         self._daily_loss_limit_pct = max(0.0, daily_loss_limit_pct)
+        self._max_consecutive_losses = max(0, max_consecutive_losses)
+        self._consecutive_loss_pause_minutes = max(0, consecutive_loss_pause_minutes)
         self._equity_provider = equity_provider
+        self._consecutive_losses = 0
+        self._paused_until: datetime | None = None
 
     def check(
         self,
@@ -52,6 +58,19 @@ class DefaultRiskChecker(RiskChecker):
         daily_pnl: float,
     ) -> RiskCheckResult:
         """포지션/일손실/중복 주문 검사."""
+        # 0. 연속 손절 서킷브레이커
+        if self._paused_until is not None:
+            now = now_kst()
+            if now < self._paused_until:
+                return RiskCheckResult(
+                    passed=False,
+                    reason=(
+                        f"consecutive_loss_pause: losses={self._consecutive_losses} "
+                        f"until={self._paused_until.isoformat()}"
+                    ),
+                )
+            self._paused_until = None
+
         # 1. 일손실 제한 (daily_loss_limit 은 음수, 손실이 한도 초과 시 거부)
         daily_loss_limit = self._daily_loss_limit
         equity = self._get_equity()
@@ -99,6 +118,21 @@ class DefaultRiskChecker(RiskChecker):
                 )
 
         return RiskCheckResult(passed=True, reason="ok")
+
+    def record_trade_result(self, realized_pnl: float) -> None:
+        """청산 결과로 연속 손절 카운터를 갱신하고, 임계 도달 시 신규 진입을 일시 차단한다."""
+        if realized_pnl < 0:
+            self._consecutive_losses += 1
+            if (
+                self._max_consecutive_losses > 0
+                and self._consecutive_losses >= self._max_consecutive_losses
+            ):
+                self._paused_until = now_kst() + timedelta(
+                    minutes=self._consecutive_loss_pause_minutes
+                )
+        elif realized_pnl > 0:
+            self._consecutive_losses = 0
+            self._paused_until = None
 
     def _get_equity(self) -> float:
         if self._equity_provider is None:

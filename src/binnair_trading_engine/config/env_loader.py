@@ -128,6 +128,13 @@ def config_from_environ() -> EngineConfig:
             "max_position_qty": _float("BINNAIR_RISK_MAX_POSITION_QTY", 0.0),
             "daily_loss_limit_pct": _float("BINNAIR_RISK_DAILY_LOSS_LIMIT_PCT", 0.03),
             "duplicate_order_window_seconds": _int("BINNAIR_RISK_DUPLICATE_ORDER_WINDOW_SECONDS", 180),
+            "min_hold_seconds_before_signal_exit": _int(
+                "BINNAIR_RISK_MIN_HOLD_SECONDS_BEFORE_SIGNAL_EXIT", 90
+            ),
+            "max_consecutive_losses": _int("BINNAIR_RISK_MAX_CONSECUTIVE_LOSSES", 3),
+            "consecutive_loss_pause_minutes": _int(
+                "BINNAIR_RISK_CONSECUTIVE_LOSS_PAUSE_MINUTES", 30
+            ),
         },
         "signal_policy": {
             "consecutive_required": _int("BINNAIR_SIGNAL_CONSECUTIVE_REQUIRED", 2),

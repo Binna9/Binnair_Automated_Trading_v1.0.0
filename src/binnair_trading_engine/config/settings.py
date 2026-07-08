@@ -96,6 +96,12 @@ class RiskConfig:
     max_position_qty: float = 0.0  # 심볼당 최대 수량. 0=비활성 (XRP 등 저가 코인은 명목%만 사용).
     daily_loss_limit_pct: float = 0.03  # 하루 손실 제한. 0.03 = 지갑의 3% 손실 시 신규 주문 차단.
     duplicate_order_window_seconds: int = 180  # 동일 심볼/동일 방향 중복 주문 최소 간격.
+    # 진입 후 이 시간(초) 전에는 모델 SELL 신호만으로 청산하지 않음 (TP/SL은 예외 없이 즉시 적용).
+    # 진입 직후 노이즈로 신호가 바로 반대로 뒤집혀 청산되는 whipsaw를 줄이기 위함.
+    min_hold_seconds_before_signal_exit: int = 90
+    # 연속 손절 N회 발생 시 신규 진입을 일정 시간 차단 (0=비활성).
+    max_consecutive_losses: int = 3
+    consecutive_loss_pause_minutes: int = 30
 
 
 @dataclass
@@ -271,6 +277,21 @@ class EngineConfig:
             ),
             max_position_qty=float(
                 risk.get("max_position_qty", default_risk.max_position_qty)
+            ),
+            min_hold_seconds_before_signal_exit=int(
+                risk.get(
+                    "min_hold_seconds_before_signal_exit",
+                    default_risk.min_hold_seconds_before_signal_exit,
+                )
+            ),
+            max_consecutive_losses=int(
+                risk.get("max_consecutive_losses", default_risk.max_consecutive_losses)
+            ),
+            consecutive_loss_pause_minutes=int(
+                risk.get(
+                    "consecutive_loss_pause_minutes",
+                    default_risk.consecutive_loss_pause_minutes,
+                )
             ),
         )
         sp_cfg_data = data.get("signal_policy", {})

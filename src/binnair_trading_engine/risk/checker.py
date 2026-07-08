@@ -43,3 +43,7 @@ class RiskChecker(ABC):
         - daily_pnl: 당일 손익 (일손실 제한)
         """
         ...
+
+    def record_trade_result(self, realized_pnl: float) -> None:
+        """청산 결과 기록 훅 (연속 손절 서킷브레이커 등). 기본은 no-op."""
+        return None

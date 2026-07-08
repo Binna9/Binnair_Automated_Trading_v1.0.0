@@ -35,7 +35,11 @@ from binnair_trading_engine.signal import ConsecutiveSignalPolicy
 from binnair_trading_engine.state import StateManager
 from binnair_trading_engine.storage import StorageLayer
 from binnair_trading_engine.strategy import Strategy
-from binnair_trading_engine.strategy.exit_manager import ExitManager
+from binnair_trading_engine.strategy.exit_manager import (
+    EXIT_STOP_LOSS,
+    EXIT_TAKE_PROFIT,
+    ExitManager,
+)
 from binnair_trading_engine.strategy.passthrough import PassthroughStrategy
 
 logger = logging.getLogger(__name__)
@@ -127,6 +131,24 @@ class TradingEngine:
                     },
                 )
 
+    def _infer_exchange_close_reason(self, pos: Position, exit_price: float) -> str:
+        """
+        거래소에서 포지션이 사라진 이유를 마지막 체크가/TP/SL로 추정한다.
+        거래소 native 보호주문(OCO)이 체결된 실제 fill을 조회하지 않는 best-effort
+        추정치이며, TP/SL 범위 밖이면(수동 청산·청산 등) EXCHANGE_SYNC로 남는다.
+        """
+        if pos.tp_price is not None:
+            if pos.is_long() and exit_price >= pos.tp_price:
+                return EXIT_TAKE_PROFIT
+            if not pos.is_long() and exit_price <= pos.tp_price:
+                return EXIT_TAKE_PROFIT
+        if pos.sl_price is not None:
+            if pos.is_long() and exit_price <= pos.sl_price:
+                return EXIT_STOP_LOSS
+            if not pos.is_long() and exit_price >= pos.sl_price:
+                return EXIT_STOP_LOSS
+        return "EXCHANGE_SYNC"
+
     def _compute_tp_sl(self, entry_price: float, side: str) -> tuple[float | None, float | None]:
         """trade_rules 기준 TP/SL 가격 계산."""
         rules = self._config.trade_rules
@@ -167,6 +189,7 @@ class TradingEngine:
 
         if local is not None and exch_qty <= 0:
             exit_price = mark_price or local.avg_entry_price
+            inferred_reason = self._infer_exchange_close_reason(local, exit_price)
             logger.warning(
                 "Local OPEN position but exchange is flat; reconciling without order",
                 extra={
@@ -175,16 +198,18 @@ class TradingEngine:
                     "local_qty": local.quantity,
                     "local_side": local.side,
                     "exit_price": exit_price,
+                    "inferred_reason": inferred_reason,
                 },
             )
             closed = self._position_manager.close_position(
                 symbol,
                 exit_price=exit_price,
-                exit_reason="EXCHANGE_SYNC",
+                exit_reason=inferred_reason,
             )
             if closed:
                 self._storage.save_position(closed)
                 self._signal_policy.reset(symbol)
+                self._risk.record_trade_result(closed.realized_pnl)
                 ctx = TradeContext(
                     run_id=self._ctx.run_id,
                     strategy_id=self._ctx.strategy_id,
@@ -622,6 +647,21 @@ class TradingEngine:
         if not pos.is_long() or not self._signal_policy.allows_long_exit(snapshot.symbol):
             return
 
+        held_seconds = (now_kst() - pos.opened_at).total_seconds()
+        min_hold = self._config.risk.min_hold_seconds_before_signal_exit
+        if held_seconds < min_hold:
+            logger.debug(
+                "Model exit signal deferred: min hold not reached",
+                extra={
+                    "run_id": run_id,
+                    "symbol": snapshot.symbol,
+                    "held_seconds": held_seconds,
+                    "min_hold_seconds": min_hold,
+                    "correlation_id": corr_id,
+                },
+            )
+            return
+
         intent = OrderIntent(
             symbol=snapshot.symbol,
             side=OrderSide.SELL,
@@ -725,6 +765,7 @@ class TradingEngine:
             if closed_pos:
                 self._storage.save_position(closed_pos)
                 self._signal_policy.reset(symbol)
+                self._risk.record_trade_result(closed_pos.realized_pnl)
                 exit_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
                 exit_ctx.correlation_id = corr_id  # type: ignore[attr-defined]
                 self._storage.save_audit(
