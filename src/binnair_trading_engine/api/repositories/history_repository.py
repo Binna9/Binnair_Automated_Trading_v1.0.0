@@ -273,6 +273,7 @@ class EngineHistoryRepository:
                         exit_price=dto.exit_price,
                         realized_pnl=dto.realized_pnl,
                         pnl_pct=dto.pnl_pct,
+                        is_win=dto.is_win,
                         exit_reason=dto.exit_reason,
                         opened_at=dto.opened_at,
                         closed_at=dto.closed_at,

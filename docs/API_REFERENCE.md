@@ -661,7 +661,7 @@ GET /api/v1/history/summary?run_id=testnet_timesfm_run&symbol=XRPUSDT
 
 **청산 완료 거래** — `trade_result` (진입→청산 1라운드).
 
-`/performance/trades`와 동일 데이터, `holding_seconds` 필드 추가.
+`/performance/trades`와 동일 `trade_result` 원천. `holding_seconds` 필드 추가. `is_win` 포함 (승/패 UI용).
 
 ### `GET /api/v1/history`
 

@@ -101,6 +101,7 @@ class TradeHistoryItemDTO:
     exit_price: float
     realized_pnl: float
     pnl_pct: float | None
+    is_win: bool
     exit_reason: str | None
     opened_at: datetime
     closed_at: datetime
