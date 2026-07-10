@@ -168,6 +168,10 @@ class Prediction:
     forecast_mode: str = ""
     forecast_prices: list[float] | None = None
     forecast_returns: list[float] | None = None
+    # TimesFM 진단: HOLD 원인·적용 threshold (API/DB inference payload)
+    hold_reason: str | None = None
+    effective_threshold: float | None = None
+    signal_kind: str = "entry"  # entry | exit
 
 
 @dataclass

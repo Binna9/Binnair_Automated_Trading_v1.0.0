@@ -358,7 +358,7 @@ TimesFM 모델 추론 이벤트 (BUY/SELL 시 저장).
 
 **Query** — `signals`와 동일
 
-**주요 필드:** `input_snapshot`, `output_prediction` (action, confidence, score 등)
+**주요 필드:** `input_snapshot`, `output_prediction` (action, confidence, score, `hold_reason`, `effective_threshold`, `forecast_returns` 등 — [TIMESFM.md](./TIMESFM.md))
 
 **예시**
 
@@ -740,6 +740,7 @@ curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_lim
 
 ## 6. 관련 문서
 
+- [TIMESFM.md](./TIMESFM.md) — TimesFM threshold·timeframe·hold_reason
 - [README.md](../README.md) — 엔진 아키텍처, 모듈 구조, 실행 방법
 - [PERSISTENCE.md](./PERSISTENCE.md) — DB 테이블, DTO, Repository 상세
 - `.env.dev` (로컬, gitignore) / `trade.env` (서버, gitignore) — `BINNAIR_*` 설정. 프론트 전용 문서(API_FRONTEND.md)는 아직 작성되지 않음.

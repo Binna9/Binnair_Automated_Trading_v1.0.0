@@ -22,7 +22,11 @@ class Predictor(ABC):
 
     @abstractmethod
     def predict(
-        self, snapshot: "MarketSnapshot", ctx: "TradeContext"
+        self,
+        snapshot: "MarketSnapshot",
+        ctx: "TradeContext",
+        *,
+        for_exit: bool = False,
     ) -> Prediction | None:
-        """마켓 스냅샷으로 예측 결과 반환 (buy/sell/hold)."""
+        """마켓 스냅샷으로 예측 결과 반환 (buy/sell/hold). for_exit=True면 청산 threshold."""
         ...

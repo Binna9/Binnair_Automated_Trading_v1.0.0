@@ -194,6 +194,26 @@ class OhlcvCandlePostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
+    def get_latest_candle_open_time(
+        self,
+        symbol: str,
+        timeframe: str,
+    ):
+        session = self._session()
+        try:
+            stmt = (
+                select(OhlcvCandleModel.open_time)
+                .where(
+                    OhlcvCandleModel.symbol == symbol,
+                    OhlcvCandleModel.timeframe == timeframe,
+                )
+                .order_by(OhlcvCandleModel.open_time.desc())
+                .limit(1)
+            )
+            return session.execute(stmt).scalar_one_or_none()
+        finally:
+            session.close()
+
 
 class EngineRunPostgresRepository(_BasePostgresRepository):
     """engine_run 테이블 repository."""

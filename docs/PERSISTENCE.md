@@ -23,7 +23,7 @@
 | **performance_daily** | run_id + UTC 일자별 성과 롤업. `trade_result` 청산 시 upsert. 승률·수익률 API의 일 단위 소스 |
 | **equity_snapshot** | 잔고 스냅샷 (엔진 시작 시 / 청산 시). 기간 수익률(%) 계산의 분모(기준 자본) |
 | **risk_event** | 리스크 거부/경고 이벤트 (`event_type`, `reason`, `intent_data`) |
-| **model_inference_event** | 모델 추론 I/O (input_snapshot, output_prediction). **BUY/SELL 시에만 저장**, HOLD 틱은 `persist_model_inference=true`가 아닌 한 저장 안 함 |
+| **model_inference_event** | 모델 추론 I/O (`input_snapshot`, `output_prediction`). 엔진은 매 inference tick 저장. `output_prediction.hold_reason`으로 HOLD 원인 구분 ([TIMESFM.md](./TIMESFM.md)) |
 | **audit_log** | 모든 주요 이벤트 최종 기록 (`risk_rejected`, `position_closed` 등) |
 
 > `position_snapshot`과 `trade_result`의 차이: `position_snapshot`은 OPEN/CLOSED 모든 상태 변화를 남기는 원시 이력이고, `trade_result`는 CLOSED 시점에 진입→청산 1라운드를 요약해 별도로 만드는 집계 전용 테이블이다 (`performance/metrics.py:build_trade_result_create`).

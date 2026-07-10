@@ -149,12 +149,22 @@ def config_from_environ() -> EngineConfig:
                 "context_length": _int("BINNAIR_TIMESFM_CONTEXT_LENGTH", 128),
                 "min_context": _int("BINNAIR_TIMESFM_MIN_CONTEXT", 64),
                 "horizon": _int("BINNAIR_TIMESFM_HORIZON", 3),
-                "forecast_mode": _get("BINNAIR_TIMESFM_FORECAST_MODE", "last"),
+                "forecast_mode": _get("BINNAIR_TIMESFM_FORECAST_MODE", "average"),
                 "forecast_index": _int("BINNAIR_TIMESFM_FORECAST_INDEX", -1),
                 "fee_rate": _float("BINNAIR_TIMESFM_FEE_RATE", 0.0004),
                 "slippage_rate": _float("BINNAIR_TIMESFM_SLIPPAGE_RATE", 0.0005),
                 "safety_margin": _float("BINNAIR_TIMESFM_SAFETY_MARGIN", 0.0001),
                 "signal_threshold": _float_or_none("BINNAIR_TIMESFM_SIGNAL_THRESHOLD"),
+                "exit_signal_threshold": _float_or_none("BINNAIR_TIMESFM_EXIT_SIGNAL_THRESHOLD"),
+                "exit_threshold_mult": _float("BINNAIR_TIMESFM_EXIT_THRESHOLD_MULT", 0.85),
+                "timeframe_threshold_scale": _bool("BINNAIR_TIMESFM_TIMEFRAME_THRESHOLD_SCALE", True),
+                "ref_timeframe": _get("BINNAIR_TIMESFM_REF_TIMEFRAME", "1m"),
+                "ref_horizon": _int("BINNAIR_TIMESFM_REF_HORIZON", 3),
+                "min_threshold_fee_ratio": _float("BINNAIR_TIMESFM_MIN_THRESHOLD_FEE_RATIO", 0.25),
+                "predict_on_candle_close": _bool("BINNAIR_TIMESFM_PREDICT_ON_CANDLE_CLOSE", True),
+                "append_live_price_to_history": _bool(
+                    "BINNAIR_TIMESFM_APPEND_LIVE_PRICE_TO_HISTORY", False
+                ),
                 "model_version": _get("BINNAIR_TIMESFM_MODEL_VERSION", "timesfm-2.5-200m"),
                 "feature_set_version": _get("BINNAIR_TIMESFM_FEATURE_SET_VERSION", "price-history-v1"),
             }
@@ -200,4 +210,20 @@ def config_from_environ() -> EngineConfig:
             "status_log_every_ticks": _int("BINNAIR_AUTOPILOT_STATUS_LOG_EVERY_TICKS", 10),
         },
     }
-    return EngineConfig.from_dict(data)
+    cfg = EngineConfig.from_dict(data)
+    return _apply_timesfm_market_defaults(cfg)
+
+
+def _apply_timesfm_market_defaults(cfg: EngineConfig) -> EngineConfig:
+    """TimesFM timeframe과 market poll interval 정렬."""
+    if cfg.predictor_type != "timesfm" or cfg.predictor_timesfm_config is None:
+        return cfg
+    if not _bool("BINNAIR_MARKET_ALIGN_POLL_WITH_TIMEFRAME", True):
+        return cfg
+    from binnair_trading_engine.predictor.timesfm_utils import timeframe_to_seconds
+
+    tf_sec = timeframe_to_seconds(cfg.predictor_timesfm_config.timeframe)
+    poll = cfg.market_data.poll_interval_seconds
+    if poll < tf_sec:
+        cfg.market_data.poll_interval_seconds = float(tf_sec)
+    return cfg

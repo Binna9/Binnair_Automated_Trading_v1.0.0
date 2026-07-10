@@ -5,6 +5,7 @@ ohlcv_candle DB의 최근 close 시계열을 Predictor에 전달한다.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Protocol
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,12 @@ class PriceHistoryProvider(Protocol):
         timeframe: str,
         limit: int,
     ) -> list[tuple[float, float, float]]: ...
+
+    def get_latest_candle_open_time(
+        self,
+        symbol: str,
+        timeframe: str,
+    ) -> datetime | None: ...
 
 
 class OhlcvDbPriceHistoryProvider:
@@ -61,6 +68,16 @@ class OhlcvDbPriceHistoryProvider:
             symbol=symbol,
             timeframe=timeframe,
             limit=limit,
+        )
+
+    def get_latest_candle_open_time(
+        self,
+        symbol: str,
+        timeframe: str,
+    ) -> datetime | None:
+        return self._repo.get_latest_candle_open_time(
+            symbol=symbol,
+            timeframe=timeframe,
         )
 
 

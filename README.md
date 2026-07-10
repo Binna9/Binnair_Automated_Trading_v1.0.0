@@ -208,6 +208,10 @@ HF_HOME=/data/huggingface
 | 환경변수 | 기본값 | 설명 |
 |----------|--------|------|
 | `BINNAIR_TIMESFM_SIGNAL_THRESHOLD` | (미지정 시 자동계산) | 지정 시 `fee_rate*2+slippage_rate+safety_margin` 공식 대신 고정값 사용. **비워두는 것을 권장** — 원가 이하로 낮추면 노이즈 수준 신호로 과매매하게 됨 |
+| `BINNAIR_TIMESFM_TIMEFRAME_THRESHOLD_SCALE` | true | timeframe 변경 시 entry threshold 자동 스케일 ([TIMESFM.md](./docs/TIMESFM.md)) |
+| `BINNAIR_TIMESFM_PREDICT_ON_CANDLE_CLOSE` | true | 새 OHLCV 캔들 close 시에만 inference |
+| `BINNAIR_TIMESFM_FORECAST_MODE` | average | `average`(권장) \| `last` |
+| `BINNAIR_MARKET_ALIGN_POLL_WITH_TIMEFRAME` | true | poll interval을 timeframe 이상으로 자동 상향 |
 | `BINNAIR_AUTOPILOT_SCORE_PERCENTILE` | 70 | 최근 |score| 분포에서 이 percentile 이상만 진입 허용 (adaptive threshold) |
 | `BINNAIR_AUTOPILOT_BASE_CONSECUTIVE_REQUIRED` | 2 | 진입/청산 신호 확인 최소 연속 횟수. 1은 확인 없이 즉시 반응하므로 비권장 |
 | `BINNAIR_AUTOPILOT_BASE_TP_ATR_MULT` / `_SL_ATR_MULT` | 2.0 / 1.2 | ATR 배수 기반 TP/SL. 내부적으로 수수료+슬리피지 원가 이하로는 좁혀지지 않도록 하한이 걸려 있음 |
@@ -263,6 +267,8 @@ Binance klines → ohlcv_candle upsert → PriceHistoryProvider → TimesFMPredi
 `TimesFMPredictor`는 DB를 직접 알지 않고 `PriceHistoryProvider.get_recent_prices()`로 최근 close 시계열을 받는다.
 `autopilot.RegimeDetector`는 같은 provider의 `get_recent_ohlc()`로 (high, low, close) 바를 받아 True Range 기반 ATR을 계산한다.
 DB 히스토리가 `min_context`보다 부족하면 엔진 tick으로 쌓은 in-memory 가격 히스토리로 fallback한다.
+
+**TimesFM 상세 (threshold·5m·hold_reason):** [docs/TIMESFM.md](./docs/TIMESFM.md)
 
 ### CLI (설치 후)
 

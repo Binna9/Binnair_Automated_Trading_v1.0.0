@@ -128,6 +128,18 @@ class PredictorTimesFMConfig:
     safety_margin: float = 0.001
     # 지정 시 fee/slippage/safety 공식 대신 BUY/SELL 임계값으로 직접 사용. 0.0001 = 0.01%
     signal_threshold: float | None = None
+    # long_only 청산(SELL) 전용 threshold. 미지정 시 entry × exit_threshold_mult
+    exit_signal_threshold: float | None = None
+    exit_threshold_mult: float = 0.85
+    # timeframe 변경 시 entry threshold 자동 스케일 (ref_timeframe 대비)
+    timeframe_threshold_scale: bool = True
+    ref_timeframe: str = "1m"
+    ref_horizon: int = 3
+    min_threshold_fee_ratio: float = 0.25  # scaled threshold 하한 = fee_floor × 이 값
+    # True: 새 OHLCV 캔들 close 확정 시에만 inference (진입·모델청산)
+    predict_on_candle_close: bool = True
+    # True: DB close 시계열 끝에 live tick 가격 붙임 (기본 False — close-only)
+    append_live_price_to_history: bool = False
     model_version: str = "timesfm-2.5-200m"
     feature_set_version: str = "price-history-v1"
 
@@ -325,6 +337,40 @@ class EngineConfig:
                 float(tfm["signal_threshold"])
                 if tfm.get("signal_threshold") is not None
                 else None
+            ),
+            exit_signal_threshold=(
+                float(tfm["exit_signal_threshold"])
+                if tfm.get("exit_signal_threshold") is not None
+                else None
+            ),
+            exit_threshold_mult=float(
+                tfm.get("exit_threshold_mult", PredictorTimesFMConfig.exit_threshold_mult)
+            ),
+            timeframe_threshold_scale=bool(
+                tfm.get(
+                    "timeframe_threshold_scale",
+                    PredictorTimesFMConfig.timeframe_threshold_scale,
+                )
+            ),
+            ref_timeframe=tfm.get("ref_timeframe", PredictorTimesFMConfig.ref_timeframe),
+            ref_horizon=int(tfm.get("ref_horizon", PredictorTimesFMConfig.ref_horizon)),
+            min_threshold_fee_ratio=float(
+                tfm.get(
+                    "min_threshold_fee_ratio",
+                    PredictorTimesFMConfig.min_threshold_fee_ratio,
+                )
+            ),
+            predict_on_candle_close=bool(
+                tfm.get(
+                    "predict_on_candle_close",
+                    PredictorTimesFMConfig.predict_on_candle_close,
+                )
+            ),
+            append_live_price_to_history=bool(
+                tfm.get(
+                    "append_live_price_to_history",
+                    PredictorTimesFMConfig.append_live_price_to_history,
+                )
             ),
             model_version=tfm.get("model_version", PredictorTimesFMConfig.model_version),
             feature_set_version=tfm.get("feature_set_version", PredictorTimesFMConfig.feature_set_version),

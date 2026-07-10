@@ -31,6 +31,8 @@ class RuleBasedPredictor(Predictor):
         self,
         snapshot: MarketSnapshot,
         ctx: TradeContext,
+        *,
+        for_exit: bool = False,
     ) -> Prediction | None:
         # TODO: 규칙 적용. 현재는 HOLD.
         action = SignalAction.HOLD

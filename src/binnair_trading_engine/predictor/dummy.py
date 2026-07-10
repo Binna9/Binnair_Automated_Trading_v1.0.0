@@ -22,7 +22,11 @@ class DummyPredictor(Predictor):
         self._force_action = force_action
 
     def predict(
-        self, snapshot: MarketSnapshot, ctx: TradeContext
+        self,
+        snapshot: MarketSnapshot,
+        ctx: TradeContext,
+        *,
+        for_exit: bool = False,
     ) -> Prediction | None:
         action = self._force_action or SignalAction.HOLD
         return Prediction(

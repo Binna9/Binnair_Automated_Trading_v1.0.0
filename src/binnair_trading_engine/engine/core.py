@@ -438,8 +438,15 @@ class TradingEngine:
         # 2. 포지션 없음 → 기존 predictor → signal → strategy → risk → exchange 흐름
         trade_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
         self._apply_autopilot(snapshot)
-        pred = self._predictor.predict(snapshot, trade_ctx)
+        pred = self._predictor.predict(snapshot, trade_ctx, for_exit=False)
         self._record_autopilot_score(pred)
+
+        if pred is not None and pred.hold_reason == "awaiting_candle_close":
+            logger.debug(
+                "Skip entry inference until next candle close",
+                extra={"run_id": run_id, "symbol": symbol, "correlation_id": corr_id},
+            )
+            return
 
         # Phase 1: Predictor.predict() 직후 model_inference_event 항상 저장
         if pred is not None:
@@ -636,8 +643,10 @@ class TradingEngine:
 
         trade_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
         self._apply_autopilot(snapshot)
-        pred = self._predictor.predict(snapshot, trade_ctx)
+        pred = self._predictor.predict(snapshot, trade_ctx, for_exit=True)
         self._record_autopilot_score(pred)
+        if pred is not None and pred.hold_reason == "awaiting_candle_close":
+            return
         if pred is not None:
             self._storage.save_model_inference(snapshot, pred)
         if pred is None:

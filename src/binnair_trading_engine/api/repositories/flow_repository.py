@@ -336,13 +336,15 @@ class FlowQueryRepository:
             action = pred.get("action", "?")
             conf = pred.get("confidence")
             conf_txt = f" conf={conf:.2f}" if isinstance(conf, (int, float)) else ""
+            reason = pred.get("hold_reason")
+            reason_txt = f" reason={reason}" if reason else ""
             items.append(
                 FlowTimelineItemDTO(
                     event_type="inference",
                     event_at=dto.inference_at,
                     run_id=dto.run_id,
                     symbol=dto.symbol,
-                    summary=f"TimesFM {action}{conf_txt}",
+                    summary=f"TimesFM {action}{conf_txt}{reason_txt}",
                     correlation_id=None,
                     payload=dto_to_dict(dto),
                 )

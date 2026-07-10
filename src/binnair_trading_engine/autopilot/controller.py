@@ -60,10 +60,9 @@ class AutopilotController:
         return c.fee_rate * 2.0 + c.slippage_rate + c.safety_margin
 
     def _min_threshold(self) -> float:
-        c = self._timesfm_config
-        if c.signal_threshold is not None:
-            return float(c.signal_threshold)
-        return self._fee_floor()
+        from binnair_trading_engine.predictor.timesfm_utils import compute_entry_threshold
+
+        return compute_entry_threshold(self._timesfm_config)
 
     def _load_bars(self, symbol: str) -> list[tuple[float, float, float]]:
         """(high, low, close) 바 목록 — True Range ATR 계산용."""
@@ -175,7 +174,10 @@ class AutopilotController:
         effective = base_threshold * regime.threshold_multiplier
 
         if isinstance(predictor, TimesFMPredictor):
-            predictor.set_threshold(effective)
+            from binnair_trading_engine.predictor.timesfm_utils import compute_exit_threshold
+
+            exit_thr = compute_exit_threshold(self._timesfm_config, effective)
+            predictor.set_thresholds(effective, exit_thr)
 
         base_consecutive = self._cfg.base_consecutive_required
         consecutive = max(1, base_consecutive + regime.consecutive_delta)
