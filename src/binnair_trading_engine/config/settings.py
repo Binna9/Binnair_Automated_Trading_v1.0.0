@@ -128,7 +128,7 @@ class PredictorTimesFMConfig:
     safety_margin: float = 0.001
     # 지정 시 fee/slippage/safety 공식 대신 BUY/SELL 임계값으로 직접 사용. 0.0001 = 0.01%
     signal_threshold: float | None = None
-    # long_only 청산(SELL) 전용 threshold. 미지정 시 entry × exit_threshold_mult
+    # 청산 전용 threshold. 미지정 시 entry × exit_threshold_mult
     exit_signal_threshold: float | None = None
     exit_threshold_mult: float = 0.85
     # timeframe 변경 시 entry threshold 자동 스케일 (ref_timeframe 대비)

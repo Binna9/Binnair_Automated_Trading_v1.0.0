@@ -78,7 +78,7 @@ def compute_exit_threshold(
     config: "PredictorTimesFMConfig",
     entry_threshold: float,
 ) -> float:
-    """청산(SELL) 판정 threshold — long_only에서 롱 청산용."""
+    """청산(SELL/BUY) 판정 threshold — 모델 기반 청산용."""
     if config.exit_signal_threshold is not None:
         return float(config.exit_signal_threshold)
     mult = max(0.1, config.exit_threshold_mult)

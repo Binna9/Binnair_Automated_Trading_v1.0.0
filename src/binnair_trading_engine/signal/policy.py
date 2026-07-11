@@ -13,10 +13,14 @@ class ConsecutiveSignalPolicy:
     """
     심볼별 최근 N개 시그널이 같은 방향일 때만 통과시키는 정책.
 
-    1차 정책은 long_only:
-    - BUY N회 연속: 신규 롱 진입 허용
-    - SELL N회 연속: 보유 롱 청산 허용
+    long_only:
+    - BUY N회 연속: 신규 롱 진입
+    - SELL N회 연속: 보유 롱 청산
     - HOLD: 포지션 유지
+
+    long_short (선물 ONE_WAY 권장):
+    - BUY N회 연속: 롱 진입 또는 숏 청산
+    - SELL N회 연속: 숏 진입 또는 롱 청산
     """
 
     def __init__(
@@ -54,12 +58,37 @@ class ConsecutiveSignalPolicy:
         return len(history) == self._required and all(a == action for a in history)
 
     def allows_entry(self, symbol: str) -> bool:
-        """현재 정책에서 신규 진입을 허용하는지."""
-        return self._mode == "long_only" and self.is_consecutive(symbol, SignalAction.BUY)
+        """long_only 호환 — 롱 진입만."""
+        return self._mode == "long_only" and self.is_consecutive(
+            symbol, SignalAction.BUY
+        )
+
+    def allows_entry_action(self, symbol: str, action: SignalAction) -> bool:
+        """포지션 없을 때 신규 진입 허용 여부."""
+        if action == SignalAction.HOLD:
+            return False
+        if self._mode == "long_only":
+            return action == SignalAction.BUY and self.is_consecutive(
+                symbol, SignalAction.BUY
+            )
+        if self._mode == "long_short":
+            if action == SignalAction.BUY:
+                return self.is_consecutive(symbol, SignalAction.BUY)
+            if action == SignalAction.SELL:
+                return self.is_consecutive(symbol, SignalAction.SELL)
+        return False
 
     def allows_long_exit(self, symbol: str) -> bool:
-        """현재 정책에서 롱 포지션 청산을 허용하는지."""
-        return self._mode == "long_only" and self.is_consecutive(symbol, SignalAction.SELL)
+        """롱 포지션 모델 청산 허용."""
+        if self._mode not in ("long_only", "long_short"):
+            return False
+        return self.is_consecutive(symbol, SignalAction.SELL)
+
+    def allows_short_exit(self, symbol: str) -> bool:
+        """숏 포지션 모델 청산 허용 (long_short 전용)."""
+        if self._mode != "long_short":
+            return False
+        return self.is_consecutive(symbol, SignalAction.BUY)
 
     def reset(self, symbol: str) -> None:
         self._history.pop(symbol, None)

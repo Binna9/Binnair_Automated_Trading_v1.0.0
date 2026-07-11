@@ -40,14 +40,17 @@ Binance klines (ingest_ohlcv, timeframe=config)
 
 **timeframe_scale** (5m 예): `ref_timeframe(1m) / timeframe(5m)` → 긴 봉에서 \|score\|가 작아지는 것을 보정.
 
-### exit threshold (SELL, long_only 청산)
+### exit threshold (모델 청산)
 
 | 우선순위 | 출처 |
 |----------|------|
 | 1 | `BINNAIR_TIMESFM_EXIT_SIGNAL_THRESHOLD` |
 | 2 | `entry_threshold × BINNAIR_TIMESFM_EXIT_THRESHOLD_MULT` (기본 0.85) |
 
-롱 청산은 진입보다 약간 낮은 threshold로 **조기 exit** 가능 (whipsaw 완화와 trade-off).
+- **long_only**: SELL 연속 N회 → 롱 청산 (`MODEL_SELL`)
+- **long_short**: SELL 연속 N회 → 롱 청산, BUY 연속 N회 → 숏 청산 (`MODEL_BUY`)
+
+청산 threshold는 진입보다 약간 낮아 **조기 exit** 가능 (whipsaw 완화와 trade-off).
 
 ---
 
@@ -106,15 +109,18 @@ API 타임라인 summary: `TimesFM HOLD reason=below_threshold conf=0.19` 형태
 
 ---
 
-## 7. 운영 예시 (XRP 5m testnet)
+## 7. 운영 예시 (XRP 5m testnet, long_short)
 
 ```bash
+BINNAIR_SIGNAL_MODE=long_short
+BINNAIR_EXCHANGE_POSITION_SIDE_MODE=ONE_WAY
 BINNAIR_TIMESFM_TIMEFRAME=5m
 BINNAIR_TIMESFM_FORECAST_MODE=average
 BINNAIR_TIMESFM_PREDICT_ON_CANDLE_CLOSE=true
 BINNAIR_MARKET_POLL_INTERVAL_SECONDS=300   # align=true면 자동 상향
 BINNAIR_AUTOPILOT_ENABLED=true
 BINNAIR_SIGNAL_CONSECUTIVE_REQUIRED=2
+BINNAIR_RISK_MIN_HOLD_SECONDS_BEFORE_SIGNAL_EXIT=120
 ```
 
 `signal_threshold`를 수동으로 내리기 전에 **Autopilot + timeframe scale** 조합을 먼저 확인.

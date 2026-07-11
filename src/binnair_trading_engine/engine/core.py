@@ -461,13 +461,14 @@ class TradingEngine:
 
         self._signal_policy.record(symbol, pred.action)
 
-        if pred.action != SignalAction.BUY or not self._signal_policy.allows_entry(symbol):
+        if not self._signal_policy.allows_entry_action(symbol, pred.action):
             logger.debug(
                 "Signal filtered by policy",
                 extra={
                     "run_id": run_id,
                     "symbol": symbol,
                     "action": pred.action.value,
+                    "policy_mode": self._signal_policy.mode,
                     "correlation_id": corr_id,
                 },
             )
@@ -624,7 +625,9 @@ class TradingEngine:
         """
         보유 포지션 exit 관리.
         1. TP/SL 도달 시 우선 청산
-        2. TP/SL 미도달 시 모델 SELL 3회 연속이면 롱 청산
+        2. TP/SL 미도달 시 모델 신호 연속 N회면 청산
+           - 롱: SELL → MODEL_SELL
+           - 숏: BUY → MODEL_BUY (long_short)
         """
         result = self._exit_manager.check_exit(pos, snapshot)
         if result is not None:
@@ -653,7 +656,15 @@ class TradingEngine:
             return
 
         self._signal_policy.record(snapshot.symbol, pred.action)
-        if not pos.is_long() or not self._signal_policy.allows_long_exit(snapshot.symbol):
+
+        exit_reason: str | None = None
+        if pos.is_long() and self._signal_policy.allows_long_exit(snapshot.symbol):
+            exit_reason = "MODEL_SELL"
+        elif not pos.is_long() and self._signal_policy.allows_short_exit(
+            snapshot.symbol
+        ):
+            exit_reason = "MODEL_BUY"
+        if exit_reason is None:
             return
 
         held_seconds = (now_kst() - pos.opened_at).total_seconds()
@@ -666,6 +677,7 @@ class TradingEngine:
                     "symbol": snapshot.symbol,
                     "held_seconds": held_seconds,
                     "min_hold_seconds": min_hold,
+                    "exit_reason": exit_reason,
                     "correlation_id": corr_id,
                 },
             )
@@ -673,18 +685,18 @@ class TradingEngine:
 
         intent = OrderIntent(
             symbol=snapshot.symbol,
-            side=OrderSide.SELL,
+            side=OrderSide.SELL if pos.is_long() else OrderSide.BUY,
             order_type=OrderType.MARKET,
             quantity=pos.quantity,
             price=None,
             reduce_only=True,
-            position_side="LONG",
+            position_side="LONG" if pos.is_long() else "SHORT",
         )
         self._submit_exit_order(
             snapshot=snapshot,
             pos=pos,
             intent=intent,
-            exit_reason="MODEL_SELL",
+            exit_reason=exit_reason,
             run_id=run_id,
             corr_id=corr_id,
         )

@@ -283,16 +283,21 @@ binnair-api
 TimesFM의 단일 예측값은 바로 주문으로 쓰지 않고, `ConsecutiveSignalPolicy`가 심볼별 최근 시그널을 누적해 노이즈를 줄인다. 필요 연속 횟수는 Autopilot이 레짐(고변동성/횡보 등)에 따라 tick마다 조정한다.
 
 ```text
-포지션 없음 + BUY N회 연속        → 롱 진입 (TP/SL 계산)
-포지션 없음 + HOLD/SELL          → 대기
+long_only (기본):
+  포지션 없음 + BUY N회 연속        → 롱 진입
+  포지션 없음 + SELL               → 대기 (롱 청산 신호만, 진입 아님)
+  롱 보유 + SELL N회 연속          → 모델 청산 (MODEL_SELL)
 
-롱 포지션 있음, 매 tick:
-  1. 현재가가 TP/SL에 도달           → 즉시 청산 (가격 조건은 confirmation 없이 항상 최우선)
-  2. 미도달 + 모델 SELL N회 연속     → 최소 보유시간(min_hold_seconds_before_signal_exit) 경과 시에만 청산
-  3. 그 외                         → 유지
+long_short (선물 ONE_WAY 권장, BINNAIR_SIGNAL_MODE=long_short):
+  포지션 없음 + BUY N회 연속        → 롱 진입
+  포지션 없음 + SELL N회 연속       → 숏 진입
+  롱 보유 + SELL N회 연속          → MODEL_SELL
+  숏 보유 + BUY N회 연속           → MODEL_BUY
+
+공통:
+  매 tick TP/SL 도달 시 즉시 청산 (가격 조건 최우선)
+  모델 청산은 min_hold_seconds_before_signal_exit 경과 후에만
 ```
-
-`SELL`은 숏 진입이 아니라 **롱 청산 신호**로만 사용한다 (`signal_policy.mode=long_only`).
 
 ### 지갑 잔고 기반 수량 계산
 

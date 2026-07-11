@@ -36,7 +36,8 @@
 |----|------|
 | `TAKE_PROFIT` | 가격이 TP 도달 (`strategy/exit_manager.py`) |
 | `STOP_LOSS` | 가격이 SL 도달 |
-| `MODEL_SELL` | 모델 SELL 신호 연속 N회 (최소 보유시간 경과 후) |
+| `MODEL_SELL` | 모델 SELL 신호 연속 N회 (롱 청산, 최소 보유시간 경과 후) |
+| `MODEL_BUY` | 모델 BUY 신호 연속 N회 (숏 청산, `long_short` 모드) |
 | `SHUTDOWN` | graceful 종료 시 강제 청산 |
 | `EXCHANGE_SYNC` | 로컬 모르게 거래소 포지션이 사라짐 (수동 청산 등). 가능하면 TP/SL 가격과 비교해 `TAKE_PROFIT`/`STOP_LOSS`로 best-effort 재추정 후 기록, 판단 불가 시 `EXCHANGE_SYNC` 유지 |
 
