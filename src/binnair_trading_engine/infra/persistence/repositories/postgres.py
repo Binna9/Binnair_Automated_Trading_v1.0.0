@@ -231,6 +231,11 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
                 existing.status = "running"
                 existing.started_at = dto.started_at
                 existing.stopped_at = None
+                existing.strategy_id = dto.strategy_id
+                existing.model_version = dto.model_version
+                existing.feature_set_version = dto.feature_set_version
+                existing.version = dto.version
+                existing.paper_mode = dto.paper_mode
                 existing.config_snapshot = dto.config_snapshot
                 session.commit()
                 return dto.run_id

@@ -235,7 +235,7 @@ def _apply_timesfm_market_defaults(cfg: EngineConfig) -> EngineConfig:
         return cfg
     if not _bool("BINNAIR_MARKET_ALIGN_POLL_WITH_TIMEFRAME", True):
         return cfg
-    from binnair_trading_engine.predictor.timesfm_utils import timeframe_to_seconds
+    from binnair_trading_engine.market_data.timeframe import timeframe_to_seconds
 
     tf_sec = timeframe_to_seconds(cfg.predictor_timesfm_config.timeframe)
     poll = cfg.market_data.poll_interval_seconds
