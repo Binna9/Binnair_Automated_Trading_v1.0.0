@@ -319,7 +319,7 @@ GET /api/v1/positions/open?user_id=default&symbol=XRPUSDT
 |------|------|
 | `realized_pnl` | 실현 손익 (USDT) |
 | `exit_price` | 청산가 |
-| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `SHUTDOWN` \| `EXCHANGE_SYNC` |
+| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `MODEL_BUY` \| `SHUTDOWN` \| `EXCHANGE_SYNC` |
 
 **예시**
 
@@ -584,7 +584,7 @@ GET /api/v1/performance/trades?run_id=testnet_timesfm_run&symbol=XRPUSDT&limit=5
 | `realized_pnl` | 실현 손익 (USDT) |
 | `pnl_pct` | 거래 수익률 (%) |
 | `is_win` | 승리 여부 |
-| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `SHUTDOWN` \| `EXCHANGE_SYNC` |
+| `exit_reason` | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `MODEL_BUY` \| `SHUTDOWN` \| `EXCHANGE_SYNC` |
 | `opened_at` / `closed_at` | 진입·청산 시각 |
 | `hold_seconds` | 보유 시간(초) |
 

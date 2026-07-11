@@ -10,10 +10,10 @@ TimesFM 예측 기반 자동매매 엔진 (Binance USD-M Futures). Paper trading
 
 | 영역 | 구현 내용 | 비고 |
 |------|-----------|------|
-| **진입** | Predictor → Signal → Strategy → Risk → Exchange 주문 | BUY 연속 N회 시 TP/SL 계산 후 진입, position_snapshot 저장 |
+| **진입** | Predictor → Signal → Strategy → Risk → Exchange 주문 | `long_short`: BUY/SELL 연속 N회 시 롱/숏 진입, TP/SL 후 position_snapshot 저장 |
 | **보유** | 포지션 유지, TP/SL 매 tick 감시 | Autopilot 활성 시 ATR 기반 TP/SL을 tick마다 재계산 |
-| **청산 (가격 기반)** | ExitManager TP/SL 도달 시 SELL | TAKE_PROFIT / STOP_LOSS 구분 저장, 가격 조건은 항상 최우선 |
-| **청산 (신호 기반)** | 모델 SELL 연속 N회 시 롱 청산 | `MODEL_SELL`. 단, 진입 후 `min_hold_seconds_before_signal_exit`(기본 90초) 전에는 보류 — TP/SL은 예외 없이 즉시 적용 |
+| **청산 (가격 기반)** | ExitManager TP/SL 도달 시 시장가 청산 | TAKE_PROFIT / STOP_LOSS, 롱·숏 대칭 |
+| **청산 (신호 기반)** | 모델 반전 신호 연속 N회 시 청산 | 롱 `MODEL_SELL`, 숏 `MODEL_BUY`. `min_hold_seconds_before_signal_exit` 전에는 보류 |
 | **재기동** | DB `position_snapshot` OPEN 포지션 복구 + 거래소 포지션 양방향 동기화 | `_recover_positions_from_db`, `_sync_position_with_exchange` |
 | **Autopilot** | 레짐(추세/변동성) 감지 → threshold·TP/SL·consecutive_required 자동 조정 | `autopilot/` — score 분포 기반 adaptive threshold, OHLC High/Low 기반 True Range ATR |
 | **리스크 관리** | 일손실 제한, 포지션/명목 한도, 중복주문 방지, **연속 손절 서킷브레이커** | N회 연속 손절 시 일정 시간 신규 진입 차단 |
@@ -325,7 +325,7 @@ CLOSED 행에는 다음 컬럼이 저장됨:
 
 | 컬럼 | 설명 | 예 |
 |------|------|-----|
-| exit_reason | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `EXCHANGE_SYNC` | TAKE_PROFIT |
+| exit_reason | `TAKE_PROFIT` \| `STOP_LOSS` \| `MODEL_SELL` \| `MODEL_BUY` \| `SHUTDOWN` \| `EXCHANGE_SYNC` | TAKE_PROFIT |
 | exit_price | 청산 가격 | 51001.0 |
 | realized_pnl | 실현 손익 | +1001 (LONG TP) / -501 (LONG SL) |
 | hold_seconds | 보유 시간(초) | 182 |

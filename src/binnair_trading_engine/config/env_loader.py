@@ -211,7 +211,22 @@ def config_from_environ() -> EngineConfig:
         },
     }
     cfg = EngineConfig.from_dict(data)
-    return _apply_timesfm_market_defaults(cfg)
+    cfg = _apply_timesfm_market_defaults(cfg)
+    return _validate_signal_mode(cfg)
+
+
+_VALID_SIGNAL_MODES = frozenset({"long_only", "long_short"})
+
+
+def _validate_signal_mode(cfg: EngineConfig) -> EngineConfig:
+    mode = (cfg.signal_policy.mode or "long_only").strip().lower()
+    if mode not in _VALID_SIGNAL_MODES:
+        raise ValueError(
+            f"Invalid BINNAIR_SIGNAL_MODE={mode!r}; "
+            f"allowed: {', '.join(sorted(_VALID_SIGNAL_MODES))}"
+        )
+    cfg.signal_policy.mode = mode
+    return cfg
 
 
 def _apply_timesfm_market_defaults(cfg: EngineConfig) -> EngineConfig:
