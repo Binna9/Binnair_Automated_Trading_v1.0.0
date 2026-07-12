@@ -94,8 +94,9 @@ class StorageLayer(Protocol):
         ctx: "EngineContext",
         paper_mode: bool,
         config_snapshot: dict | None = None,
+        trading_enabled: bool = False,
     ) -> None:
-        """엔진 시작 시 engine_run 레코드 생성."""
+        """엔진 프로세스 기동 시 engine_run 레코드 (status=paused until UI start)."""
         ...
 
     def record_engine_stop(self, run_id: str, status: str = "stopped") -> None:

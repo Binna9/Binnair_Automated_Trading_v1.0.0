@@ -8,12 +8,14 @@
 - **DB Model**: SQLAlchemy 2.x 모델 (`infra/persistence/models.py`). 테이블 스키마.
 - **Repository**: 인터페이스(`repositories/interfaces.py`) + Postgres 구현(`repositories/postgres.py`). DTO ↔ DB 변환 담당.
 
-## 테이블 목록 (13개)
+## 테이블 목록 (15개)
 
 | 테이블 | 역할 |
 |--------|------|
 | **ohlcv_candle** | Binance 등 거래소 OHLCV 원천 캔들. TimesFM 입력 close 히스토리 + autopilot True Range ATR(high/low) 입력 |
-| **engine_run** | 엔진 실행 단위. run_id, strategy_id, model_version, paper_mode, status, started_at/stopped_at, config_snapshot |
+| **engine_run** | 엔진 실행 단위. `status`: `running`(매매중) \| `paused`(UI 매매중지) \| `stopped`(프로세스종료) \| `error` |
+| **engine_runtime_state** | **UI L1 런타임 설정** + `trading_enabled` (매매 on/off). user_id당 1 row |
+| **engine_command** | UI start/stop 명령 큐. 엔진이 poll 후 `pending`→`done`/`failed` |
 | **strategy_config_snapshot** | 실행 시점 전략 설정 스냅샷. replay/debug용 |
 | **signal_event** | Predictor/Strategy 출력 시그널 (BUY/SELL/HOLD). symbol, model_version, timeframe |
 | **order_request** | 엔진 → 거래소 전달 직전 주문 요청 |
@@ -48,6 +50,8 @@
 | 테이블 | 조회 DTO | 생성 DTO |
 |--------|----------|----------|
 | engine_run | `EngineRunDTO` | `EngineRunCreate` |
+| engine_runtime_state | `EngineRuntimeStateDTO` | `EngineRuntimeStateUpsert` |
+| engine_command | `EngineCommandDTO` | `EngineCommandCreate` |
 | strategy_config_snapshot | `StrategyConfigSnapshotDTO` | `StrategyConfigSnapshotCreate` |
 | signal_event | `SignalEventDTO` | `SignalEventCreate` |
 | order_request | `OrderRequestDTO` | `OrderRequestCreate` |
@@ -97,6 +101,23 @@ python scripts/init_db.py
 # 기존 테이블 삭제 후 재생성
 python scripts/init_db.py --drop
 ```
+
+## UI 런타임 설정 (L0 + L1)
+
+| 계층 | 저장소 | 내용 |
+|------|--------|------|
+| **L0** | `trade.env` | API 키, DB 접속, HF 모델 경로, API host/port 등 비밀·인프라 |
+| **L1** | `engine_runtime_state.config_json` | symbol, signal_mode, TP/SL, TimesFM, Autopilot 등 UI 파라미터 |
+
+흐름: UI → `PUT/POST /api/v1/control/*` → DB 저장 → 엔진 `RuntimeControlPoller`가 명령 poll → `merge_runtime_config(env, L1)` → tick 실행.
+
+- **프로세스 기동 직후:** `trading_enabled=false`, `engine_run.status=paused` (UI Start 전까지 매매 없음)
+- `trading_enabled=false` (UI Stop): 신규 진입만 중단. `engine_run.status=paused`. 보유 포지션 TP/SL·청산은 계속
+- `trading_enabled=true` (UI Start): `engine_run.status=running`
+- `engine_run.status=stopped`: 엔진 **프로세스** 종료 시에만 (UI Stop과 다름)
+- `engine_command`: `start` / `stop` (status: `pending` → `done` / `failed`)
+
+스키마 정의: `config/runtime_config.py` (`RuntimeConfigParams`, `RUNTIME_PARAM_SCHEMA`).
 
 ## 환경변수
 

@@ -187,7 +187,7 @@ class AuditLogDTO:
 # Create DTOs (repository 입력용)
 # ---------------------------------------------------------------------------
 
-EngineRunStatus = str  # "running" | "stopped" | "error"
+EngineRunStatus = str  # "running" | "paused" | "stopped" | "error"
 
 
 @dataclass
@@ -201,6 +201,7 @@ class EngineRunCreate:
     started_at: datetime
     config_snapshot: dict[str, Any] | None = None
     user_id: str = "default"
+    trading_enabled: bool = False
 
 
 @dataclass
@@ -443,3 +444,56 @@ class EquitySnapshotCreate:
     source: str
     paper_mode: bool = True
     user_id: str = "default"
+
+
+@dataclass
+class EngineRuntimeStateUpsert:
+    """engine_runtime_state upsert 입력."""
+
+    user_id: str
+    run_id: str
+    strategy_id: str
+    config_json: dict
+    config_version: int
+    trading_enabled: bool
+
+
+@dataclass
+class EngineRuntimeStateDTO:
+    """engine_runtime_state 조회 결과."""
+
+    user_id: str
+    run_id: str
+    strategy_id: str
+    config_json: dict
+    config_version: int
+    trading_enabled: bool
+    updated_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass
+class EngineCommandCreate:
+    """engine_command enqueue 입력."""
+
+    user_id: str
+    action: str
+    config_json: dict | None = None
+    config_version: int | None = None
+    correlation_id: str = ""
+
+
+@dataclass
+class EngineCommandDTO:
+    """engine_command 조회 결과."""
+
+    id: int
+    user_id: str
+    action: str
+    config_json: dict | None
+    config_version: int | None
+    status: str
+    error_message: str | None
+    correlation_id: str
+    created_at: datetime | None = None
+    processed_at: datetime | None = None

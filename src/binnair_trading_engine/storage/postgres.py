@@ -147,6 +147,7 @@ class PostgresStorage(
         ctx: EngineContext,
         paper_mode: bool,
         config_snapshot: dict | None = None,
+        trading_enabled: bool = False,
     ) -> None:
         pass
 

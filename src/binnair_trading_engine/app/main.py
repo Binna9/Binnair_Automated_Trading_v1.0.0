@@ -30,6 +30,14 @@ def main() -> int:
 
     engine = bootstrap()
     md_cfg = engine._config.market_data
+    runtime_poller = None
+    if engine._config.storage.backend == "postgres":
+        from binnair_trading_engine.engine.runtime_control import RuntimeControlPoller
+
+        runtime_poller = RuntimeControlPoller(
+            engine, user_id=engine._ctx.user_id
+        )
+        runtime_poller.sync_on_startup()
 
     provider = None
     if md_cfg.enabled:
@@ -58,6 +66,13 @@ def main() -> int:
 
     try:
         while running:
+            if runtime_poller is not None:
+                runtime_poller.poll()
+            poll_interval = (
+                engine.config.market_data.poll_interval_seconds
+                if md_cfg.enabled
+                else interval
+            )
             if provider is not None:
                 snapshot = provider.fetch_snapshot(symbol, run_id=engine._ctx.run_id)
                 if snapshot:
@@ -68,8 +83,8 @@ def main() -> int:
                 engine.run_cycle()
             # sleep을 쪼개야 Ctrl+C/SIGTERM 시 빠르게 stop() 진입
             slept = 0.0
-            while running and slept < interval:
-                chunk = min(1.0, interval - slept)
+            while running and slept < poll_interval:
+                chunk = min(1.0, poll_interval - slept)
                 time.sleep(chunk)
                 slept += chunk
     except KeyboardInterrupt:

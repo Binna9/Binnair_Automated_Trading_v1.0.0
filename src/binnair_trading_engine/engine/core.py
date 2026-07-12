@@ -79,6 +79,60 @@ class TradingEngine:
         self._signal_policy = signal_policy
         self._autopilot = autopilot
         self._shutdown_done = False
+        self._trading_enabled = False
+
+    @property
+    def config(self) -> EngineConfig:
+        return self._config
+
+    @property
+    def trading_enabled(self) -> bool:
+        return self._trading_enabled
+
+    def set_trading_enabled(self, enabled: bool) -> None:
+        self._trading_enabled = enabled
+
+    def apply_runtime_config(self, patch: dict) -> EngineConfig:
+        """UI L1 patch를 env 기반 config에 병합하고 하위 컴포넌트에 반영."""
+        from binnair_trading_engine.config.runtime_config import merge_runtime_config
+
+        new_cfg = merge_runtime_config(self._config, patch)
+        self._config = new_cfg
+        rc = new_cfg.run_context
+        self._ctx.run_id = rc.run_id
+        self._ctx.strategy_id = rc.strategy_id
+        self._ctx.model_version = rc.model_version
+        self._ctx.feature_set_version = rc.feature_set_version
+        self._signal_policy.set_consecutive_required(
+            new_cfg.signal_policy.consecutive_required
+        )
+        self._signal_policy.set_mode(new_cfg.signal_policy.mode)
+        if self._autopilot is not None:
+            self._autopilot.update_config(new_cfg.autopilot)
+        self._update_risk_from_config(new_cfg)
+        logger.info(
+            "Runtime config applied",
+            extra={
+                "run_id": rc.run_id,
+                "strategy_id": rc.strategy_id,
+                "signal_mode": new_cfg.signal_policy.mode,
+            },
+        )
+        return new_cfg
+
+    def _update_risk_from_config(self, cfg: EngineConfig) -> None:
+        risk = cfg.risk
+        checker = self._risk
+        if hasattr(checker, "_max_position_notional_pct"):
+            checker._max_position_notional_pct = risk.max_position_notional_pct
+        if hasattr(checker, "_daily_loss_limit_pct"):
+            checker._daily_loss_limit_pct = risk.daily_loss_limit_pct
+        if hasattr(checker, "_duplicate_window_seconds"):
+            checker._duplicate_window_seconds = risk.duplicate_order_window_seconds
+        if hasattr(checker, "_max_consecutive_losses"):
+            checker._max_consecutive_losses = risk.max_consecutive_losses
+        if hasattr(checker, "_consecutive_loss_pause_minutes"):
+            checker._consecutive_loss_pause_minutes = risk.consecutive_loss_pause_minutes
 
     def start(self) -> None:
         """엔진 시작: DB 포지션 복구, 상태 복구, engine_run 기록."""
@@ -88,6 +142,8 @@ class TradingEngine:
         self._storage.record_engine_start(
             ctx=self._ctx,
             paper_mode=self._config.exchange.paper_mode,
+            config_snapshot=self._build_config_snapshot(),
+            trading_enabled=self._trading_enabled,
         )
         if hasattr(self._storage, "record_equity_at_start"):
             try:
@@ -101,10 +157,12 @@ class TradingEngine:
             except Exception:
                 logger.debug("Starting equity snapshot skipped", exc_info=True)
         logger.info(
-            "Engine started",
+            "Engine started (process up, trading_enabled=%s)",
+            self._trading_enabled,
             extra={
                 "run_id": self._ctx.run_id,
                 "strategy_id": self._ctx.strategy_id,
+                "trading_enabled": self._trading_enabled,
             },
         )
 
@@ -415,6 +473,11 @@ class TradingEngine:
         score = pred.score if pred is not None else None
         self._autopilot.record_prediction_score(score)
 
+    def _build_config_snapshot(self) -> dict:
+        from binnair_trading_engine.config.runtime_config import engine_config_to_runtime_params
+
+        return engine_config_to_runtime_params(self._config)
+
     def process_tick(self, snapshot: MarketSnapshot) -> None:
         """
         단일 마켓 틱 처리.
@@ -433,6 +496,9 @@ class TradingEngine:
         pos = self._position_manager.get_position(symbol)
         if pos is not None and pos.is_open():
             self._process_exit_tick(snapshot, pos, run_id, corr_id)
+            return
+
+        if not self._trading_enabled:
             return
 
         # 2. 포지션 없음 → 기존 predictor → signal → strategy → risk → exchange 흐름

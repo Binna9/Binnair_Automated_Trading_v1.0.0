@@ -1,7 +1,7 @@
 # BinnAIR Monitor API — 전체 레퍼런스
 
-> **read-only** HTTP API + **실시간 WebSocket**. 엔진 start/stop, 주문 제어 없음.  
-> DB 이력(REST) + 거래소 지갑·포지션(**WebSocket**, REST 스냅샷) 제공.
+> **read-only** HTTP API + **실시간 WebSocket** + **UI 런타임 제어** (`/api/v1/control/*`).  
+> DB 이력(REST) + 거래소 지갑·포지션(**WebSocket**, REST 스냅샷) + 설정 저장·start/stop 제공.
 
 **실시간 연동:** 3.3b절 `/ws/v1/live` 참조 (별도 문서로 분리되어 있지 않음).
 
@@ -14,7 +14,7 @@
 | 실행 | `py scripts/run_api.py` |
 | Base URL | 로컬 `http://127.0.0.1:8000` (`.env.dev`) / 서버 `http://127.0.0.1:8001`(`trade.env`, 컨테이너 내부 바인딩 — 외부 노출은 리버스 프록시 경로에 따름) |
 | Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
-| HTTP Method | **GET only** (WebSocket 별도) |
+| HTTP Method | **GET** (조회) + **POST/PUT** (`/api/v1/control/*` 제어) |
 | WebSocket | `ws://127.0.0.1:8000/ws/v1/live` — 3.3b절 참조 |
 | 인증 | 없음 (v1) |
 | Content-Type | `application/json` |
@@ -71,6 +71,12 @@
 | **19** | GET | **`/api/v1/history/positions`** | Postgres | **포지션 내역** |
 | **20** | GET | **`/api/v1/history/trades`** | Postgres | **청산 거래 (라운드트rip)** |
 | **21** | GET | **`/api/v1/history`** | Postgres | **통합 조회 (summary + 최근 N건)** |
+| **22** | GET | `/api/v1/control/schema` | 코드 | UI 폼용 파라미터 스키마 |
+| **23** | GET | `/api/v1/control/config` | env+DB | effective 런타임 설정 |
+| **24** | PUT | `/api/v1/control/config` | DB | 설정만 저장 (매매 시작 없음) |
+| **25** | POST | `/api/v1/control/start` | DB+명령큐 | 설정 저장 + start 명령 |
+| **26** | POST | `/api/v1/control/stop` | DB+명령큐 | stop 명령 (신규 진입 중단) |
+| **27** | GET | `/api/v1/control/status` | env+DB | trading_enabled, engine_run, 최근 명령 |
 
 > **프론트 "내역" 화면**은 `/history/*` 사용 권장. 기존 `/orders`, `/positions`, `/performance/trades`는 하위 호환.
 
@@ -238,6 +244,68 @@ state 파일이 없거나 run_id가 다르면 `available: false`와 `message`만
 
 ---
 
+### 3.3d UI 런타임 제어 (`/api/v1/control/*`)
+
+`trade.env`(L0) 위에 UI 파라미터(L1)를 DB에 저장하고, 엔진이 poll하여 반영한다.
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/v1/control/schema` | 폼 필드 메타 + env 전용 키 목록 |
+| GET | `/api/v1/control/config` | env+DB 병합 effective 설정 |
+| PUT | `/api/v1/control/config` | 설정만 저장 (`trading_enabled` 유지) |
+| POST | `/api/v1/control/start` | 설정 저장 + `trading_enabled=true` + start 명령 |
+| POST | `/api/v1/control/stop` | `trading_enabled=false` + stop 명령 |
+| GET | `/api/v1/control/status` | 위 설정 + `engine_run` + 최근 명령 5건 |
+
+**PUT/POST Body** (`RuntimeConfigParams` — L1 전체 ~45필드, 전부 optional)
+
+UI 폼은 `GET /control/schema`의 **`tier`** 로 구분:
+
+| tier | 개수 | 예시 |
+|------|------|------|
+| `basic` | 9 | symbol, signal_mode, timesfm_timeframe, leverage, autopilot_*, trade_tp/sl |
+| `advanced` | ~36 | run_id, sizing_*, risk_*, timesfm 세부, autopilot ATR 등 |
+
+`env_only_keys`는 UI/API body에 포함하지 않음. 상세: [UI_CONTROL_GUIDE.md](./UI_CONTROL_GUIDE.md).
+
+**GET /config, /status 응답:** `config`(전체), `config_basic`, `config_advanced`
+
+**start 예시**
+
+```http
+POST /api/v1/control/start?user_id=default
+Content-Type: application/json
+
+{
+  "symbol": "XRPUSDT",
+  "signal_mode": "long_short",
+  "timesfm_timeframe": "5m",
+  "leverage": 2,
+  "autopilot_enabled": true,
+  "autopilot_score_percentile": 70,
+  "risk_min_hold_seconds_before_signal_exit": 120
+}
+```
+
+**Response (start)**
+
+```json
+{
+  "config": { "...": "effective flat params" },
+  "config_version": 1,
+  "trading_enabled": true,
+  "command_id": 1,
+  "correlation_id": "uuid",
+  "action": "start"
+}
+```
+
+> `stop`은 프로세스 종료가 아니라 **신규 진입만 중단**한다. `engine_run.status`는 `paused`로 바뀐다. 보유 포지션 TP/SL·모델 청산은 계속 동작.
+
+env 전용 (UI에서 변경 불가): API 키/시크릿, `base_url`, `paper_mode`, DB 접속, `BINNAIR_TIMESFM_MODEL_ID`, API host/port.
+
+---
+
 ### 3.4 `GET /api/v1/engine-runs`
 
 엔진 실행 세션 목록.
@@ -247,7 +315,7 @@ state 파일이 없거나 run_id가 다르면 `available: false`와 `message`만
 | 파라미터 | 기본값 | 설명 |
 |----------|--------|------|
 | `user_id` | `default` | |
-| `status` | — | `running` \| `stopped` \| `error` |
+| `status` | — | `running` \| `paused` \| `stopped` \| `error` |
 | `limit` | `20` | 1~200 |
 
 **예시**

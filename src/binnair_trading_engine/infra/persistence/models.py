@@ -89,7 +89,7 @@ class EngineRunModel(Base):
     feature_set_version: Mapped[str] = mapped_column(String(64), index=True, comment="피처 버전")
     version: Mapped[str] = mapped_column(String(32), default="1.0.0", comment="엔진 버전")
     paper_mode: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="종이거래 여부")
-    status: Mapped[str] = mapped_column(String(32), default="running", comment="running|stopped|error")
+    status: Mapped[str] = mapped_column(String(32), default="running", comment="running|paused|stopped|error")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="시작 시각")
     stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, comment="종료 시각")
     config_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="설정 스냅샷")
@@ -120,6 +120,52 @@ class StrategyConfigSnapshotModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, comment="생성")
 
     __table_args__ = ({"comment": "실행 시점 전략 설정 스냅샷 (replay/debug)"},)
+
+
+# ---------------------------------------------------------------------------
+# engine_runtime_state — UI active config + trading on/off
+# ---------------------------------------------------------------------------
+class EngineRuntimeStateModel(Base):
+    """
+    사용자별 엔진 런타임 상태.
+    UI에서 저장한 L1 설정과 trading_enabled 플래그.
+    """
+
+    __tablename__ = "engine_runtime_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, default="default", comment="사용자 ID")
+    run_id: Mapped[str] = mapped_column(String(128), index=True, comment="활성 run_id")
+    strategy_id: Mapped[str] = mapped_column(String(128), comment="활성 strategy_id")
+    config_json: Mapped[dict] = mapped_column(JSONB, comment="UI runtime flat config")
+    config_version: Mapped[int] = mapped_column(Integer, default=1, comment="설정 버전 (증가)")
+    trading_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="매매 tick 활성")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, comment="갱신 시각")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, comment="생성")
+
+    __table_args__ = ({"comment": "UI 런타임 설정(L1) 및 trading on/off"},)
+
+
+# ---------------------------------------------------------------------------
+# engine_command — start/stop 명령 큐
+# ---------------------------------------------------------------------------
+class EngineCommandModel(Base):
+    """엔진 프로세스가 poll 하는 start/stop 명령."""
+
+    __tablename__ = "engine_command"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="PK")
+    user_id: Mapped[str] = mapped_column(String(36), index=True, default="default", comment="사용자 ID")
+    action: Mapped[str] = mapped_column(String(16), index=True, comment="start|stop")
+    config_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="명령 시점 runtime config")
+    config_version: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="연결된 config_version")
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True, comment="pending|done|failed")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, comment="실패 사유")
+    correlation_id: Mapped[str] = mapped_column(String(64), default="", index=True, comment="추적 ID")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, index=True, comment="생성")
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, comment="처리 시각")
+
+    __table_args__ = ({"comment": "UI start/stop 명령 큐"},)
 
 
 # ---------------------------------------------------------------------------

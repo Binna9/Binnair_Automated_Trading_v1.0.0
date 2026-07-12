@@ -32,6 +32,13 @@ def bootstrap() -> TradingEngine:
     paper_trading=True 가 기본값.
     """
     config = load_config()
+    runtime_state = None
+    if config.storage.backend == "postgres":
+        from binnair_trading_engine.config.runtime_loader import apply_runtime_overlay
+
+        config, runtime_state = apply_runtime_overlay(
+            config, user_id=config.run_context.user_id
+        )
     rc = config.run_context
     ctx = EngineContext(
         version=rc.version,
@@ -91,4 +98,7 @@ def bootstrap() -> TradingEngine:
         signal_policy=signal_policy,
         autopilot=autopilot,
     )
+    if config.storage.backend == "postgres":
+        enabled = runtime_state.trading_enabled if runtime_state else False
+        engine.set_trading_enabled(enabled)
     return engine

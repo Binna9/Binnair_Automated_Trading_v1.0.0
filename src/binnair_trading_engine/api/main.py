@@ -18,6 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from binnair_trading_engine.api.controllers.autopilot_controller import (
     router as autopilot_router,
 )
+from binnair_trading_engine.api.controllers.control_controller import (
+    router as control_router,
+)
 from binnair_trading_engine.api.controllers.flow_controller import router
 from binnair_trading_engine.api.controllers.history_controller import router as history_router
 from binnair_trading_engine.api.controllers.ws_controller import router as ws_router
@@ -64,12 +67,13 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=api_cfg.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["*"],
     )
 
     application.include_router(router)
     application.include_router(autopilot_router)
+    application.include_router(control_router)
     application.include_router(history_router)
     application.include_router(ws_router)
 

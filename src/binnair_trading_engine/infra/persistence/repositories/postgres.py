@@ -29,6 +29,10 @@ from binnair_trading_engine.infra.persistence.dto import (
     StrategyConfigSnapshotCreate,
     TradeResultCreate,
     EquitySnapshotCreate,
+    EngineCommandCreate,
+    EngineCommandDTO,
+    EngineRuntimeStateDTO,
+    EngineRuntimeStateUpsert,
 )
 from binnair_trading_engine.infra.persistence.models import (
     AuditLogModel,
@@ -44,6 +48,8 @@ from binnair_trading_engine.infra.persistence.models import (
     TradeResultModel,
     PerformanceDailyModel,
     EquitySnapshotModel,
+    EngineCommandModel,
+    EngineRuntimeStateModel,
 )
 from binnair_trading_engine.infra.persistence.session import get_engine, get_session_factory
 
@@ -228,9 +234,10 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
                 )
             ).scalars().first()
             if existing:
-                existing.status = "running"
+                run_status = "running" if dto.trading_enabled else "paused"
+                existing.status = run_status
                 existing.started_at = dto.started_at
-                existing.stopped_at = None
+                existing.stopped_at = None if dto.trading_enabled else existing.stopped_at
                 existing.strategy_id = dto.strategy_id
                 existing.model_version = dto.model_version
                 existing.feature_set_version = dto.feature_set_version
@@ -239,6 +246,7 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
                 existing.config_snapshot = dto.config_snapshot
                 session.commit()
                 return dto.run_id
+            run_status = "running" if dto.trading_enabled else "paused"
             m = EngineRunModel(
                 user_id=dto.user_id or "default",
                 run_id=dto.run_id,
@@ -247,7 +255,7 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
                 feature_set_version=dto.feature_set_version,
                 version=dto.version,
                 paper_mode=dto.paper_mode,
-                status="running",
+                status=run_status,
                 started_at=dto.started_at,
                 config_snapshot=dto.config_snapshot,
             )
@@ -277,7 +285,11 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
             row = session.execute(stmt).scalars().first()
             if row:
                 row.status = status
-                row.stopped_at = now_kst()
+                if status == "running":
+                    row.stopped_at = None
+                elif status in ("stopped", "error"):
+                    row.stopped_at = now_kst()
+                # paused: 프로세스는 살아 있음 — stopped_at 갱신 안 함
                 session.commit()
         except Exception as e:
             session.rollback()
@@ -949,6 +961,179 @@ class EquitySnapshotPostgresRepository(_BasePostgresRepository):
             session.close()
 
 
+class EngineRuntimeStatePostgresRepository(_BasePostgresRepository):
+    """engine_runtime_state 테이블 repository."""
+
+    def get_by_user_id(self, user_id: str = "default") -> EngineRuntimeStateDTO | None:
+        session = self._session()
+        try:
+            row = session.execute(
+                select(EngineRuntimeStateModel).where(
+                    EngineRuntimeStateModel.user_id == user_id
+                )
+            ).scalars().first()
+            if not row:
+                return None
+            return EngineRuntimeStateDTO(
+                id=row.id,
+                user_id=row.user_id,
+                run_id=row.run_id,
+                strategy_id=row.strategy_id,
+                config_json=dict(row.config_json or {}),
+                config_version=row.config_version,
+                trading_enabled=row.trading_enabled,
+                updated_at=row.updated_at,
+            )
+        finally:
+            session.close()
+
+    def upsert(self, dto: EngineRuntimeStateUpsert) -> EngineRuntimeStateDTO:
+        session = self._session()
+        try:
+            row = session.execute(
+                select(EngineRuntimeStateModel).where(
+                    EngineRuntimeStateModel.user_id == dto.user_id
+                )
+            ).scalars().first()
+            now = now_kst()
+            if row:
+                row.run_id = dto.run_id
+                row.strategy_id = dto.strategy_id
+                row.config_json = dto.config_json
+                row.config_version = dto.config_version
+                row.trading_enabled = dto.trading_enabled
+                row.updated_at = now
+            else:
+                row = EngineRuntimeStateModel(
+                    user_id=dto.user_id,
+                    run_id=dto.run_id,
+                    strategy_id=dto.strategy_id,
+                    config_json=dto.config_json,
+                    config_version=dto.config_version,
+                    trading_enabled=dto.trading_enabled,
+                    updated_at=now,
+                )
+                session.add(row)
+            session.commit()
+            session.refresh(row)
+            return EngineRuntimeStateDTO(
+                id=row.id,
+                user_id=row.user_id,
+                run_id=row.run_id,
+                strategy_id=row.strategy_id,
+                config_json=dict(row.config_json or {}),
+                config_version=row.config_version,
+                trading_enabled=row.trading_enabled,
+                updated_at=row.updated_at,
+            )
+        except Exception as e:
+            session.rollback()
+            logger.exception("EngineRuntimeState upsert failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+
+class EngineCommandPostgresRepository(_BasePostgresRepository):
+    """engine_command 테이블 repository."""
+
+    def enqueue(self, dto: EngineCommandCreate) -> int:
+        session = self._session()
+        try:
+            m = EngineCommandModel(
+                user_id=dto.user_id,
+                action=dto.action,
+                config_json=dto.config_json,
+                config_version=dto.config_version,
+                status="pending",
+                correlation_id=dto.correlation_id,
+            )
+            session.add(m)
+            session.commit()
+            session.refresh(m)
+            return m.id
+        except Exception as e:
+            session.rollback()
+            logger.exception("EngineCommand enqueue failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+    def claim_pending(self, user_id: str = "default") -> EngineCommandDTO | None:
+        session = self._session()
+        try:
+            row = session.execute(
+                select(EngineCommandModel)
+                .where(
+                    EngineCommandModel.user_id == user_id,
+                    EngineCommandModel.status == "pending",
+                )
+                .order_by(EngineCommandModel.id.asc())
+                .limit(1)
+            ).scalars().first()
+            if not row:
+                return None
+            return EngineCommandDTO(
+                id=row.id,
+                user_id=row.user_id,
+                action=row.action,
+                config_json=dict(row.config_json) if row.config_json else None,
+                config_version=row.config_version,
+                status=row.status,
+                error_message=row.error_message,
+                correlation_id=row.correlation_id or "",
+                created_at=row.created_at,
+                processed_at=row.processed_at,
+            )
+        finally:
+            session.close()
+
+    def mark_done(self, command_id: int, *, error_message: str | None = None) -> None:
+        session = self._session()
+        try:
+            row = session.execute(
+                select(EngineCommandModel).where(EngineCommandModel.id == command_id)
+            ).scalars().first()
+            if row:
+                row.status = "failed" if error_message else "done"
+                row.error_message = error_message
+                row.processed_at = now_kst()
+                session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.exception("EngineCommand mark_done failed: %s", e)
+            raise
+        finally:
+            session.close()
+
+    def get_latest(self, user_id: str = "default", limit: int = 5) -> list[EngineCommandDTO]:
+        session = self._session()
+        try:
+            rows = session.execute(
+                select(EngineCommandModel)
+                .where(EngineCommandModel.user_id == user_id)
+                .order_by(EngineCommandModel.id.desc())
+                .limit(limit)
+            ).scalars().all()
+            return [
+                EngineCommandDTO(
+                    id=r.id,
+                    user_id=r.user_id,
+                    action=r.action,
+                    config_json=dict(r.config_json) if r.config_json else None,
+                    config_version=r.config_version,
+                    status=r.status,
+                    error_message=r.error_message,
+                    correlation_id=r.correlation_id or "",
+                    created_at=r.created_at,
+                    processed_at=r.processed_at,
+                )
+                for r in rows
+            ]
+        finally:
+            session.close()
+
+
 class PostgresRepositoryFactory:
     """Postgres repository 팩토리."""
 
@@ -966,6 +1151,8 @@ class PostgresRepositoryFactory:
         self._trade_result = TradeResultPostgresRepository()
         self._performance_daily = PerformanceDailyPostgresRepository()
         self._equity_snapshot = EquitySnapshotPostgresRepository()
+        self._engine_runtime_state = EngineRuntimeStatePostgresRepository()
+        self._engine_command = EngineCommandPostgresRepository()
 
     @property
     def ohlcv_candle(self) -> OhlcvCandlePostgresRepository:
@@ -1018,3 +1205,11 @@ class PostgresRepositoryFactory:
     @property
     def equity_snapshot(self) -> EquitySnapshotPostgresRepository:
         return self._equity_snapshot
+
+    @property
+    def engine_runtime_state(self) -> EngineRuntimeStatePostgresRepository:
+        return self._engine_runtime_state
+
+    @property
+    def engine_command(self) -> EngineCommandPostgresRepository:
+        return self._engine_command

@@ -287,6 +287,7 @@ class PostgresDbStorage(
         ctx: EngineContext,
         paper_mode: bool,
         config_snapshot: dict | None = None,
+        trading_enabled: bool = False,
     ) -> None:
         dto = EngineRunCreate(
             run_id=ctx.run_id,
@@ -298,6 +299,7 @@ class PostgresDbStorage(
             started_at=_dt(None),
             config_snapshot=config_snapshot,
             user_id=getattr(ctx, "user_id", "default"),
+            trading_enabled=trading_enabled,
         )
         self._repos.engine_run.create(dto)
 

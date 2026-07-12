@@ -50,6 +50,13 @@ class ConsecutiveSignalPolicy:
         self._required = n
         self._history = defaultdict(lambda: deque(maxlen=self._required))
 
+    def set_mode(self, mode: str) -> None:
+        """런타임 signal_mode 변경."""
+        if mode == self._mode:
+            return
+        self._mode = mode
+        self._history.clear()
+
     def record(self, symbol: str, action: SignalAction) -> None:
         self._history[symbol].append(action)
 

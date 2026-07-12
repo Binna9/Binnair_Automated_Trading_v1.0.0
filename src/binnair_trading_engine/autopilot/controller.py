@@ -125,6 +125,17 @@ class AutopilotController:
             self._calibrator.sample_count,
         )
 
+    def update_config(self, config: AutopilotConfig) -> None:
+        """런타임 Autopilot 파라미터 갱신."""
+        self._cfg = config
+        self._calibrator = ThresholdCalibrator(
+            window=config.score_window,
+            min_samples=config.score_min_samples,
+            percentile=config.score_percentile,
+            k=config.score_k,
+        )
+        self._regime = RegimeDetector(config)
+
     def _warmup_scores_from_db(
         self,
         run_id: str,
