@@ -34,12 +34,21 @@
 
 ### 목록 응답 공통 형태
 
+레거시 엔드포인트는 `items` + `count`만 반환할 수 있다.  
+**`/api/v1/history/*` 목록**은 페이지네이션 래퍼를 사용한다.
+
 ```json
 {
   "items": [ ... ],
-  "count": 0
+  "count": 0,
+  "total_count": 0,
+  "offset": 0,
+  "limit": 100,
+  "has_more": false
 }
 ```
+
+상세·프론트 포워딩: [TRADING_HISTORY_API.md](./TRADING_HISTORY_API.md)
 
 ---
 
@@ -69,8 +78,10 @@
 | **17** | GET | **`/api/v1/history/orders`** | Postgres | **주문 내역** |
 | **18** | GET | **`/api/v1/history/executions`** | Postgres | **체결( fill ) 내역** |
 | **19** | GET | **`/api/v1/history/positions`** | Postgres | **포지션 내역** |
-| **20** | GET | **`/api/v1/history/trades`** | Postgres | **청산 거래 (라운드트rip)** |
-| **21** | GET | **`/api/v1/history`** | Postgres | **통합 조회 (summary + 최근 N건)** |
+| **20** | GET | **`/api/v1/history/trades`** | Postgres | **청산 거래 (라운드트립)** |
+| **20b** | GET | **`/api/v1/history/equity`** | Postgres | **잔고 곡선 (equity_snapshot)** |
+| **20c** | GET | **`/api/v1/history/tick`** | Postgres | **correlation_id 틱 상세** |
+| **21** | GET | **`/api/v1/history`** | Postgres | **통합 조회 (summary + 최근 N건 + equity)** |
 | **22** | GET | `/api/v1/control/schema` | 코드 | UI 폼용 파라미터 스키마 |
 | **23** | GET | `/api/v1/control/config` | env+DB | effective 런타임 설정 |
 | **24** | PUT | `/api/v1/control/config` | DB | 설정만 저장 (매매 시작 없음) |
@@ -660,8 +671,10 @@ GET /api/v1/performance/trades?run_id=testnet_timesfm_run&symbol=XRPUSDT&limit=5
 
 ## 3.16 엔진 이력 API (`/api/v1/history/*`)
 
-엔진이 DB에 기록한 **주문·체결·포지션·청산 거래**를 프론트 "내역" 탭 단위로 제공한다.  
+엔진이 DB에 기록한 **주문·체결·포지션·청산·잔고·틱 상세**를 프론트 "내역" 탭 단위로 제공한다.  
 모든 엔드포인트에 `run_id` 지정을 권장한다 (`config.run_context.run_id`).
+
+> **프론트 포워딩·필드·페이지네이션 전문:** [TRADING_HISTORY_API.md](./TRADING_HISTORY_API.md)
 
 ### 공통 Query
 
@@ -670,12 +683,14 @@ GET /api/v1/performance/trades?run_id=testnet_timesfm_run&symbol=XRPUSDT&limit=5
 | `user_id` | 기본 `default` |
 | `run_id` | 엔진 실행 ID |
 | `symbol` | 예: `XRPUSDT` |
-| `from_at` / `to_at` | ISO8601 기간 (KST 저장) |
-| `limit` | 목록 상한 |
+| `from_at` / `to_at` | ISO8601 기간 (KST 저장). `to_at`는 미만(`<`) |
+| `limit` / `offset` | 페이지 크기 / 시작 오프셋 |
+
+목록 응답: `items`, `count`, `total_count`, `offset`, `limit`, `has_more`.
 
 ### `GET /api/v1/history/summary`
 
-현재 run 기준 카운트·최근 활동 시각·실현손익 합계.
+현재 run 기준 카운트·최근 활동 시각·실현손익 합계 (DB COUNT/SUM).
 
 ```
 GET /api/v1/history/summary?run_id=testnet_timesfm_run&symbol=XRPUSDT
@@ -688,18 +703,20 @@ GET /api/v1/history/summary?run_id=testnet_timesfm_run&symbol=XRPUSDT
 | `executions_total` | 체결 건수 |
 | `closed_positions` / `closed_trades` | CLOSED 스냅샷 / trade_result |
 | `realized_pnl_sum` | 기간 내 청산 PnL 합 |
+| `wins` / `losses` / `win_rate` | 승·패·승률 |
 | `latest_*_at` | 최근 signal/order/execution/position 시각 |
 
 ### `GET /api/v1/history/orders`
 
 **주문 내역** — `order_request` + 체결 요약.
 
-추가 Query: `side` (BUY\|SELL), `fill_status` (PENDING\|FILLED\|REJECTED\|CANCELLED)
+추가 Query: `side` (BUY\|SELL), `fill_status` (PENDING\|FILLED\|PARTIAL\|REJECTED\|CANCELLED)
 
 | 필드 | 설명 |
 |------|------|
 | `fill_status` | PENDING=order_id만 있음, FILLED=체결됨, REJECTED=order_id 없음 |
 | `filled_qty` / `avg_fill_price` / `executed_at` | 체결 정보 (없으면 null) |
+| `correlation_id` | 틱 상세 드릴다운 키 |
 | `reduce_only` | 청산 주문 여부 |
 
 > **주의:** `signal_event` BUY와 다름. 신호만 있고 주문 없으면 이 API에 안 나온다.
@@ -729,11 +746,20 @@ GET /api/v1/history/summary?run_id=testnet_timesfm_run&symbol=XRPUSDT
 
 **청산 완료 거래** — `trade_result` (진입→청산 1라운드).
 
-`/performance/trades`와 동일 `trade_result` 원천. `holding_seconds` 필드 추가. `is_win` 포함 (승/패 UI용).
+추가 Query: `exit_reason`, `is_win`.  
+필드 보강: `strategy_id`, `correlation_id`, `entry_notional_usdt`, `position_snapshot_id`, `hold_seconds`, `holding_seconds`.
+
+### `GET /api/v1/history/equity`
+
+**잔고 곡선** — `equity_snapshot` (시간 오름차순). `equity_usdt`, `cumulative_realized_pnl`.
+
+### `GET /api/v1/history/tick`
+
+**틱 상세** — `correlation_id` 필수. signals/orders/executions/positions/trades/audit (+ inferences 참고).
 
 ### `GET /api/v1/history`
 
-대시보드용 **통합 조회**. `run_id` **필수**. summary + orders/executions/positions/trades 각 `recent_limit`건.
+대시보드용 **통합 조회**. `run_id` **필수**. summary + orders/executions/positions/trades/equity 각 `recent_limit`건.
 
 ```
 GET /api/v1/history?run_id=testnet_timesfm_run&recent_limit=20
@@ -768,9 +794,9 @@ GET /api/v1/history?run_id=testnet_timesfm_run&recent_limit=20
 | `model_inference_event` | inferences, timeline |
 | `order_request` / `order_execution` | orders, timeline, **history/orders, history/executions** |
 | `audit_log` | audit-logs, timeline |
-| `trade_result` | performance/*, **history/trades** |
+| `trade_result` | performance/*, **history/trades**, history/tick |
 | `performance_daily` | performance/periods (day) |
-| `equity_snapshot` | performance/summary (return_pct) |
+| `equity_snapshot` | performance/summary (return_pct), **history/equity** |
 
 ---
 
@@ -800,7 +826,8 @@ curl "http://127.0.0.1:8000/api/v1/history/summary?run_id=testnet_timesfm_run"
 curl "http://127.0.0.1:8000/api/v1/history/orders?run_id=testnet_timesfm_run&limit=20"
 curl "http://127.0.0.1:8000/api/v1/history/executions?run_id=testnet_timesfm_run"
 curl "http://127.0.0.1:8000/api/v1/history/positions?run_id=testnet_timesfm_run&status=CLOSED"
-curl "http://127.0.0.1:8000/api/v1/history/trades?run_id=testnet_timesfm_run"
+curl "http://127.0.0.1:8000/api/v1/history/trades?run_id=testnet_timesfm_run&limit=20&offset=0"
+curl "http://127.0.0.1:8000/api/v1/history/equity?run_id=testnet_timesfm_run"
 curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_limit=10"
 ```
 
@@ -808,7 +835,9 @@ curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_lim
 
 ## 6. 관련 문서
 
+- [TRADING_HISTORY_API.md](./TRADING_HISTORY_API.md) — **프론트 포워딩용 트레이딩 기록·내역 API**
 - [TIMESFM.md](./TIMESFM.md) — TimesFM threshold·timeframe·hold_reason
 - [README.md](../README.md) — 엔진 아키텍처, 모듈 구조, 실행 방법
 - [PERSISTENCE.md](./PERSISTENCE.md) — DB 테이블, DTO, Repository 상세
-- `.env.dev` (로컬, gitignore) / `trade.env` (서버, gitignore) — `BINNAIR_*` 설정. 프론트 전용 문서(API_FRONTEND.md)는 아직 작성되지 않음.
+- [UI_CONTROL_GUIDE.md](./UI_CONTROL_GUIDE.md) — Start/Stop·스키마
+- `.env.dev` (로컬, gitignore) / `trade.env` (서버, gitignore) — `BINNAIR_*` 설정.

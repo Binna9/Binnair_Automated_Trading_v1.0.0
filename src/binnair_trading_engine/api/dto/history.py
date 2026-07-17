@@ -107,6 +107,41 @@ class TradeHistoryItemDTO:
     closed_at: datetime
     paper_mode: bool
     holding_seconds: float | None = None
+    strategy_id: str | None = None
+    correlation_id: str = ""
+    entry_notional_usdt: float | None = None
+    position_snapshot_id: int | None = None
+    hold_seconds: int | None = None
+
+
+@dataclass
+class EquityHistoryItemDTO:
+    """잔고 스냅샷 1건 — equity_snapshot."""
+
+    id: int
+    run_id: str
+    snapshot_at: datetime
+    snapshot_date: str
+    equity_usdt: float
+    cumulative_realized_pnl: float
+    source: str
+    paper_mode: bool
+
+
+@dataclass
+class TickDetailDTO:
+    """correlation_id 기준 매매 틱 묶음 (판단용)."""
+
+    correlation_id: str
+    run_id: str | None
+    symbol: str | None
+    signals: list[dict[str, Any]] = field(default_factory=list)
+    inferences: list[dict[str, Any]] = field(default_factory=list)
+    orders: list[dict[str, Any]] = field(default_factory=list)
+    executions: list[dict[str, Any]] = field(default_factory=list)
+    positions: list[dict[str, Any]] = field(default_factory=list)
+    trades: list[dict[str, Any]] = field(default_factory=list)
+    audit_logs: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -126,8 +161,11 @@ class EngineHistorySummaryDTO:
     closed_positions: int
     closed_trades: int
     realized_pnl_sum: float
-    latest_signal_at: datetime | None
-    latest_order_at: datetime | None
-    latest_execution_at: datetime | None
-    latest_position_at: datetime | None
+    wins: int = 0
+    losses: int = 0
+    win_rate: float | None = None
+    latest_signal_at: datetime | None = None
+    latest_order_at: datetime | None = None
+    latest_execution_at: datetime | None = None
+    latest_position_at: datetime | None = None
     filters: dict[str, Any] = field(default_factory=dict)
