@@ -214,12 +214,14 @@ class PostgresDbStorage(
         snapshot_id = self._repos.position_snapshot.create(dto)
 
         if position.status == "CLOSED" and realized_pnl is not None:
+            min_notional = float(self._config.sizing.min_order_notional_usdt or 5.0)
             trade_dto = build_trade_result_create(
                 position,
                 strategy_id=self._strategy_id,
                 user_id=self._user_id,
                 paper_mode=self._paper_mode,
                 position_snapshot_id=snapshot_id,
+                min_notional_usdt=min_notional,
             )
             if trade_dto is not None:
                 self._repos.trade_result.record_closed_trade(trade_dto)

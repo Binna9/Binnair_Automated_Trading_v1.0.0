@@ -224,6 +224,15 @@ class TradingEngine:
                 sl_price = entry_price * (1.0 + rules.sl_pct)
         return tp_price, sl_price
 
+    def _is_dust_notional(self, quantity: float, price: float) -> bool:
+        """거래소 잔량(dust) — 최소 주문 명목 미만은 실포지션으로 취급하지 않음."""
+        if quantity <= 0 or price <= 0:
+            return True
+        min_notional = float(self._config.sizing.min_order_notional_usdt or 0.0)
+        if min_notional <= 0:
+            min_notional = 5.0
+        return quantity * price < min_notional
+
     def _sync_position_with_exchange(
         self,
         symbol: str,
@@ -237,6 +246,7 @@ class TradingEngine:
         - 로컬 OPEN + 거래소 flat → stale 정리 (DB CLOSED, 청산 주문 없음)
         - 로컬 없음 + 거래소 보유 → 복구
         - 양쪽 모두 보유 → 수량·방향 불일치 시 거래소 기준으로 갱신
+        - 거래소 dust(최소 주문 명목 미만)는 flat 으로 간주 (유령 trade_result 방지)
         """
         if self._config.exchange.paper_mode:
             return
@@ -244,6 +254,23 @@ class TradingEngine:
         local = self._position_manager.get_position(symbol)
         exch = self._exchange.get_position(symbol)
         exch_qty = exch.quantity if exch is not None else 0.0
+        exch_px = 0.0
+        if exch is not None:
+            exch_px = float(exch.avg_entry_price or 0.0) or float(mark_price or 0.0)
+        if exch is not None and exch_qty > 0 and self._is_dust_notional(exch_qty, exch_px):
+            logger.info(
+                "Exchange dust ignored (below min notional)",
+                extra={
+                    "run_id": self._ctx.run_id,
+                    "symbol": symbol,
+                    "exchange_qty": exch_qty,
+                    "price": exch_px,
+                    "notional": exch_qty * exch_px,
+                    "min_notional": self._config.sizing.min_order_notional_usdt,
+                    "correlation_id": corr_id,
+                },
+            )
+            exch_qty = 0.0
 
         if local is not None and exch_qty <= 0:
             exit_price = mark_price or local.avg_entry_price
@@ -378,7 +405,13 @@ class TradingEngine:
         open_positions = self._position_manager.list_open_positions()
         if not open_positions and not self._config.exchange.paper_mode:
             exch_pos = self._exchange.get_position(symbol)
-            if exch_pos is not None and exch_pos.quantity > 0:
+            if (
+                exch_pos is not None
+                and exch_pos.quantity > 0
+                and not self._is_dust_notional(
+                    exch_pos.quantity, float(exch_pos.avg_entry_price or 0.0)
+                )
+            ):
                 tp_price, sl_price = self._compute_tp_sl(
                     exch_pos.avg_entry_price, exch_pos.side
                 )

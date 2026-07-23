@@ -59,8 +59,12 @@ def build_trade_result_create(
     correlation_id: str = "",
     position_snapshot_id: int | None = None,
     trade_id: str | None = None,
+    min_notional_usdt: float | None = None,
 ) -> TradeResultCreate | None:
-    """CLOSED Position → TradeResultCreate. 필수 필드 없으면 None."""
+    """CLOSED Position → TradeResultCreate. 필수 필드 없으면 None.
+
+    min_notional_usdt: 진입 명목이 이보다 작으면 dust/유령 청산으로 보고 기록하지 않음.
+    """
     if position.status != "CLOSED":
         return None
     realized = float(position.realized_pnl or 0.0)
@@ -84,6 +88,9 @@ def build_trade_result_create(
     closed = _ensure_kst(position.closed_at)
     hold_seconds = max(0, int((closed - opened).total_seconds()))
     notional = entry * qty
+    floor = float(min_notional_usdt) if min_notional_usdt is not None else 0.0
+    if floor > 0 and notional < floor:
+        return None
     pnl_pct = compute_pnl_pct(position.side, entry, exit_p)
     is_win, _, _ = win_loss_flags(realized)
 
