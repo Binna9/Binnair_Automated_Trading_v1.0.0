@@ -16,8 +16,11 @@ if TYPE_CHECKING:
 
 class Predictor(ABC):
     """
-    추론 인터페이스 (inference/model 분리).
-    market snapshot(tick) -> signal evaluation (buy/sell/hold).
+    Soft signal 공급자 (inference).
+
+    MarketSnapshot → BUY/SELL/HOLD 후보. 최종 진입 권한이 아니며,
+    consecutive policy(soft) + RiskChecker(hard)를 통과해야 실행된다.
+    역할: docs/RISK_FIRST_DIRECTION.md
     """
 
     @abstractmethod
@@ -28,5 +31,5 @@ class Predictor(ABC):
         *,
         for_exit: bool = False,
     ) -> Prediction | None:
-        """마켓 스냅샷으로 예측 결과 반환 (buy/sell/hold). for_exit=True면 청산 threshold."""
+        """마켓 스냅샷으로 soft 예측 (buy/sell/hold). for_exit=True면 청산 threshold."""
         ...

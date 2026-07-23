@@ -22,15 +22,13 @@ from binnair_trading_engine.domain.models import (
     OrderType,
     Position,
     Prediction,
-    Signal,
-    SignalAction,
     Trade,
     TradeContext,
 )
 from binnair_trading_engine.exchange import ExchangeAdapter
 from binnair_trading_engine.position import PositionManager
 from binnair_trading_engine.predictor import Predictor
-from binnair_trading_engine.risk import RiskChecker, RiskCheckResult
+from binnair_trading_engine.risk import RiskChecker
 from binnair_trading_engine.signal import ConsecutiveSignalPolicy
 from binnair_trading_engine.state import StateManager
 from binnair_trading_engine.storage import StorageLayer
@@ -41,6 +39,10 @@ from binnair_trading_engine.strategy.exit_manager import (
     ExitManager,
 )
 from binnair_trading_engine.strategy.passthrough import PassthroughStrategy
+from .entry_pipeline import (
+    approve_entry_risk,
+    evaluate_soft_entry_signal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,10 @@ logger = logging.getLogger(__name__)
 class TradingEngine:
     """
     자동매매 실행 엔진.
-    market snapshot -> signal evaluation -> risk check -> order creation -> execution -> position update -> persistence
+
+    Risk-first: Predictor는 soft 후보, RiskChecker가 hard 최종 거부권.
+    흐름: soft signal -> strategy -> hard risk -> order -> position -> persistence.
+    상세: docs/RISK_FIRST_DIRECTION.md
     """
 
     def __init__(
@@ -225,7 +230,7 @@ class TradingEngine:
         return tp_price, sl_price
 
     def _is_dust_notional(self, quantity: float, price: float) -> bool:
-        """거래소 잔량(dust) — 최소 주문 명목 미만은 실포지션으로 취급하지 않음."""
+        """거래소 잔량(dust): 최소 주문 명목 미만은 실포지션으로 취급하지 않음."""
         if quantity <= 0 or price <= 0:
             return True
         min_notional = float(self._config.sizing.min_order_notional_usdt or 0.0)
@@ -514,7 +519,9 @@ class TradingEngine:
     def process_tick(self, snapshot: MarketSnapshot) -> None:
         """
         단일 마켓 틱 처리.
-        포지션 우선 분기: 보유 중이면 exit(TP/SL) 관리, 없으면 predictor 진입 흐름.
+
+        보유 중 → exit(TP/SL/모델반전).
+        미보유 → soft signal → strategy → hard risk → execute.
         """
         run_id = self._ctx.run_id
         corr_id = snapshot.correlation_id or str(uuid.uuid4())
@@ -534,66 +541,55 @@ class TradingEngine:
         if not self._trading_enabled:
             return
 
-        # 2. 포지션 없음 → 기존 predictor → signal → strategy → risk → exchange 흐름
+        # 2. soft signal (TimesFM 등 + consecutive) — 최종 권한이 아님
         trade_ctx = TradeContext.from_snapshot(snapshot, self._ctx)
         self._apply_autopilot(snapshot)
-        pred = self._predictor.predict(snapshot, trade_ctx, for_exit=False)
-        self._record_autopilot_score(pred)
+        soft = evaluate_soft_entry_signal(
+            predictor=self._predictor,
+            signal_policy=self._signal_policy,
+            snapshot=snapshot,
+            trade_ctx=trade_ctx,
+            engine_ctx=self._ctx,
+        )
+        self._record_autopilot_score(soft.prediction)
 
-        if pred is not None and pred.hold_reason == "awaiting_candle_close":
+        if soft.prediction is not None:
+            self._storage.save_model_inference(snapshot, soft.prediction)
+
+        if soft.status == "awaiting_candle":
             logger.debug(
                 "Skip entry inference until next candle close",
                 extra={"run_id": run_id, "symbol": symbol, "correlation_id": corr_id},
             )
             return
-
-        # Phase 1: Predictor.predict() 직후 model_inference_event 항상 저장
-        if pred is not None:
-            self._storage.save_model_inference(snapshot, pred)
-
-        if pred is None:
+        if soft.status == "no_prediction":
             logger.debug(
                 "No prediction",
                 extra={"run_id": run_id, "symbol": symbol, "correlation_id": corr_id},
             )
             return
-
-        self._signal_policy.record(symbol, pred.action)
-
-        if not self._signal_policy.allows_entry_action(symbol, pred.action):
+        if soft.status == "policy_filtered":
             logger.debug(
-                "Signal filtered by policy",
+                "Signal filtered by policy (soft gate)",
                 extra={
                     "run_id": run_id,
                     "symbol": symbol,
-                    "action": pred.action.value,
-                    "policy_mode": self._signal_policy.mode,
+                    "detail": soft.detail,
                     "correlation_id": corr_id,
                 },
             )
             return
 
-        signal = Signal(
-            symbol=symbol,
-            action=pred.action,
-            confidence=pred.confidence,
-            price_hint=pred.price_hint or snapshot.price,
-            timestamp=snapshot.timestamp,
-            run_id=run_id,
-            strategy_id=self._ctx.strategy_id,
-            model_version=self._ctx.model_version,
-            feature_set_version=self._ctx.feature_set_version,
-        )
-
-        # Phase 1: HOLD 아니면 signal_event 저장 (신호 생성 시점)
+        assert soft.signal is not None and soft.prediction is not None
+        signal = soft.signal
+        pred = soft.prediction
         self._storage.save_signal(signal)
 
-        # 3. order creation (strategy)
+        # 3. order intent (strategy / sizing)
         intent = self._strategy.decide(signal, pred, trade_ctx)
         if intent is None:
             return
 
-        # 3b. 추가 진입 금지: Manager 기준으로만 판단 (거래소는 위 recover에서 동기화)
         if self._position_manager.has_open_position(symbol):
             logger.info(
                 "Skip entry: already has open position",
@@ -601,30 +597,47 @@ class TradingEngine:
             )
             return
 
-        # 4. risk check
+        # 4. hard risk — 통과해야만 실행
         positions = list(self._exchange.get_all_positions())
         recent_orders = self._storage.get_recent_orders(run_id, symbol, limit=50)
         daily_pnl = self._storage.get_daily_pnl(run_id)
 
-        risk_result = self._risk.check(
-            intent, trade_ctx, positions, recent_orders, daily_pnl
+        risk_result = approve_entry_risk(
+            self._risk,
+            intent=intent,
+            trade_ctx=trade_ctx,
+            current_positions=positions,
+            recent_orders=recent_orders,
+            daily_pnl=daily_pnl,
         )
         if not risk_result.passed:
             self._storage.save_audit(
-                "risk_rejected", intent, trade_ctx, reason=risk_result.reason
+                "risk_rejected",
+                intent,
+                trade_ctx,
+                reason=risk_result.reason,
+                extra_data={
+                    "gate": "hard_risk",
+                    "correlation_id": corr_id,
+                    "symbol": symbol,
+                    "signal_action": signal.action.value,
+                    "soft_detail": soft.detail,
+                    "daily_pnl": daily_pnl,
+                },
             )
             logger.warning(
-                "Risk check rejected",
+                "Hard risk rejected entry",
                 extra={
                     "run_id": run_id,
                     "symbol": symbol,
                     "reason": risk_result.reason,
                     "correlation_id": corr_id,
+                    "gate": "hard_risk",
                 },
             )
             return
 
-        # 5. execution (paper exchange)
+        # 5. execution
         execution_price = intent.price or snapshot.price
         order = self._exchange.submit_order(intent, execution_price=execution_price)
         if not order:

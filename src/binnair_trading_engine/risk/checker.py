@@ -23,8 +23,10 @@ class RiskCheckResult:
 
 class RiskChecker(ABC):
     """
-    리스크 체크 인터페이스.
-    현재 포지션, 최근 주문, 일손실 제한, 중복 주문 방지 체크 포함.
+    Hard risk gate.
+
+    Soft signal(후보) 이후 최종 진입 거부권.
+    일손실·연속손절·명목·중복 주문 등을 검사한다.
     """
 
     @abstractmethod

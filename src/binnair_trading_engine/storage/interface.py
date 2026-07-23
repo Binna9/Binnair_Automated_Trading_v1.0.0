@@ -79,8 +79,9 @@ class StorageLayer(Protocol):
         intent: "OrderIntent",
         ctx: "TradeContext",
         reason: str | None = None,
+        extra_data: dict | None = None,
     ) -> None:
-        """리스크 거부 등 이벤트 감사 로그 저장."""
+        """리스크 거부 등 이벤트 감사 로그 저장. hard risk 거부는 extra_data.gate=hard_risk."""
         ...
 
     def save_model_inference(

@@ -417,6 +417,18 @@ class EngineConfig:
             trend_slope_threshold=float(
                 ap.get("trend_slope_threshold", default_ap.trend_slope_threshold)
             ),
+            high_vol_position_scale=float(
+                ap.get("high_vol_position_scale", default_ap.high_vol_position_scale)
+            ),
+            high_vol_consecutive_delta=int(
+                ap.get(
+                    "high_vol_consecutive_delta",
+                    default_ap.high_vol_consecutive_delta,
+                )
+            ),
+            high_vol_threshold_mult=float(
+                ap.get("high_vol_threshold_mult", default_ap.high_vol_threshold_mult)
+            ),
             base_tp_atr_mult=float(ap.get("base_tp_atr_mult", default_ap.base_tp_atr_mult)),
             base_sl_atr_mult=float(ap.get("base_sl_atr_mult", default_ap.base_sl_atr_mult)),
             base_consecutive_required=int(

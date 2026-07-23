@@ -93,9 +93,9 @@ class RegimeDetector:
 
         if high_vol:
             label = "high_vol"
-            threshold_mult = 1.5
-            consecutive_delta = 1
-            position_scale = 0.7
+            threshold_mult = cfg.high_vol_threshold_mult
+            consecutive_delta = max(0, int(cfg.high_vol_consecutive_delta))
+            position_scale = max(0.1, min(1.0, float(cfg.high_vol_position_scale)))
             sl_mult = cfg.base_sl_atr_mult * 1.25
         elif low_vol:
             label = "low_vol"

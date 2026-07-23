@@ -201,6 +201,15 @@ def config_from_environ() -> EngineConfig:
             "trend_slope_threshold": _float(
                 "BINNAIR_AUTOPILOT_TREND_SLOPE_THRESHOLD", 0.0015
             ),
+            "high_vol_position_scale": _float(
+                "BINNAIR_AUTOPILOT_HIGH_VOL_POSITION_SCALE", 0.5
+            ),
+            "high_vol_consecutive_delta": _int(
+                "BINNAIR_AUTOPILOT_HIGH_VOL_CONSECUTIVE_DELTA", 2
+            ),
+            "high_vol_threshold_mult": _float(
+                "BINNAIR_AUTOPILOT_HIGH_VOL_THRESHOLD_MULT", 1.5
+            ),
             "base_tp_atr_mult": _float("BINNAIR_AUTOPILOT_BASE_TP_ATR_MULT", 2.0),
             "base_sl_atr_mult": _float("BINNAIR_AUTOPILOT_BASE_SL_ATR_MULT", 1.2),
             "base_consecutive_required": _int(

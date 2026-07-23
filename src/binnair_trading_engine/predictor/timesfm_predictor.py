@@ -36,7 +36,10 @@ HOLD_BELOW_THRESHOLD = "below_threshold"
 
 class TimesFMPredictor(Predictor):
     """
-    TimesFM zero-shot forecast 결과를 BUY/SELL/HOLD 신호로 변환한다.
+    TimesFM zero-shot forecast → BUY/SELL/HOLD soft candidate.
+
+    진입 최종 권한이 아님. consecutive + hard RiskChecker가 거부할 수 있다.
+    (docs/RISK_FIRST_DIRECTION.md)
 
     forecast_mode:
     - average: horizon 각 스텝 수익률의 산술 평균 → score

@@ -835,6 +835,7 @@ curl "http://127.0.0.1:8000/api/v1/history?run_id=testnet_timesfm_run&recent_lim
 
 ## 6. 관련 문서
 
+- [RISK_FIRST_DIRECTION.md](./RISK_FIRST_DIRECTION.md) — **리스크 우선 방향·로드맵 (예측 soft / 리스크 hard)**
 - [TRADING_HISTORY_API.md](./TRADING_HISTORY_API.md) — **프론트 포워딩용 트레이딩 기록·내역 API**
 - [TIMESFM.md](./TIMESFM.md) — TimesFM threshold·timeframe·hold_reason
 - [README.md](../README.md) — 엔진 아키텍처, 모듈 구조, 실행 방법

@@ -23,6 +23,10 @@ class AutopilotConfig:
     high_vol_ratio: float = 1.35
     low_vol_ratio: float = 0.75
     trend_slope_threshold: float = 0.0015
+    # high_vol 진입 축소 (Risk-first Phase2 — 한 번에 SL은 건드리지 않음)
+    high_vol_position_scale: float = 0.5
+    high_vol_consecutive_delta: int = 2
+    high_vol_threshold_mult: float = 1.5
     # ATR 배수 (프로필 기본 — regime이 곱함)
     base_tp_atr_mult: float = 2.0
     base_sl_atr_mult: float = 1.2

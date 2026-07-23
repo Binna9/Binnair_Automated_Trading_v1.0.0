@@ -99,6 +99,9 @@ class RuntimeConfigParams(BaseModel):
     autopilot_base_consecutive_required: int | None = Field(default=None, ge=1)
     autopilot_atr_period: int | None = Field(default=None, ge=2)
     autopilot_vol_lookback: int | None = Field(default=None, ge=10)
+    autopilot_high_vol_position_scale: float | None = Field(default=None, ge=0.1, le=1.0)
+    autopilot_high_vol_consecutive_delta: int | None = Field(default=None, ge=0)
+    autopilot_high_vol_threshold_mult: float | None = Field(default=None, gt=0)
 
     @field_validator("timesfm_timeframe")
     @classmethod
@@ -184,6 +187,29 @@ RUNTIME_PARAM_SCHEMA: list[dict[str, Any]] = [
     _schema_entry("autopilot_base_consecutive_required", group="autopilot", type_="int", label="기본 consecutive", tier="advanced"),
     _schema_entry("autopilot_atr_period", group="autopilot", type_="int", label="ATR 기간", tier="advanced"),
     _schema_entry("autopilot_vol_lookback", group="autopilot", type_="int", label="변동성 lookback", tier="advanced"),
+    _schema_entry(
+        "autopilot_high_vol_position_scale",
+        group="autopilot",
+        type_="number",
+        label="high_vol 포지션 배율",
+        tier="advanced",
+        hint="Risk-first Phase2: 기본 0.5",
+    ),
+    _schema_entry(
+        "autopilot_high_vol_consecutive_delta",
+        group="autopilot",
+        type_="int",
+        label="high_vol consecutive +",
+        tier="advanced",
+        hint="base + delta (기본 +2)",
+    ),
+    _schema_entry(
+        "autopilot_high_vol_threshold_mult",
+        group="autopilot",
+        type_="number",
+        label="high_vol threshold 배수",
+        tier="advanced",
+    ),
 ]
 
 ADVANCED_PARAM_KEYS: tuple[str, ...] = tuple(
@@ -373,6 +399,9 @@ def runtime_patch_to_nested(patch: dict[str, Any]) -> dict[str, Any]:
         "autopilot_base_consecutive_required": "base_consecutive_required",
         "autopilot_atr_period": "atr_period",
         "autopilot_vol_lookback": "vol_lookback",
+        "autopilot_high_vol_position_scale": "high_vol_position_scale",
+        "autopilot_high_vol_consecutive_delta": "high_vol_consecutive_delta",
+        "autopilot_high_vol_threshold_mult": "high_vol_threshold_mult",
     }
     ap: dict[str, Any] = {}
     for pk, nk in ap_map.items():
@@ -478,6 +507,9 @@ def engine_config_to_runtime_params(cfg: EngineConfig) -> dict[str, Any]:
         "autopilot_base_consecutive_required": ap.base_consecutive_required,
         "autopilot_atr_period": ap.atr_period,
         "autopilot_vol_lookback": ap.vol_lookback,
+        "autopilot_high_vol_position_scale": ap.high_vol_position_scale,
+        "autopilot_high_vol_consecutive_delta": ap.high_vol_consecutive_delta,
+        "autopilot_high_vol_threshold_mult": ap.high_vol_threshold_mult,
     }
 
 
