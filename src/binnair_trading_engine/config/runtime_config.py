@@ -18,11 +18,14 @@ from binnair_trading_engine.config.settings import EngineConfig
 ParamTier = Literal["basic", "advanced"]
 
 # 기본 화면에 보여줄 필드 (나머지는 고급 모드)
+# timesfm_* / fincast_* 는 schema visible_when 으로 상호 배타 표시
 BASIC_PARAM_KEYS: tuple[str, ...] = (
     "symbol",
     "signal_mode",
     "signal_consecutive_required",
+    "predictor_type",
     "timesfm_timeframe",
+    "fincast_timeframe",
     "leverage",
     "autopilot_enabled",
     "autopilot_score_percentile",
@@ -77,6 +80,11 @@ class RuntimeConfigParams(BaseModel):
     signal_mode: str | None = Field(default=None, pattern=r"^(long_only|long_short)$")
     signal_consecutive_required: int | None = Field(default=None, ge=1)
 
+    # predictor switch
+    predictor_type: str | None = Field(
+        default=None, pattern=r"^(timesfm|fincast|rule_based)$"
+    )
+
     # timesfm
     timesfm_timeframe: str | None = Field(default=None, max_length=8)
     timesfm_forecast_mode: str | None = Field(default=None, pattern=r"^(average|last)$")
@@ -89,6 +97,22 @@ class RuntimeConfigParams(BaseModel):
     timesfm_fee_rate: float | None = Field(default=None, ge=0)
     timesfm_slippage_rate: float | None = Field(default=None, ge=0)
     timesfm_safety_margin: float | None = Field(default=None, ge=0)
+
+    # fincast
+    fincast_timeframe: str | None = Field(default=None, max_length=8)
+    fincast_checkpoint_path: str | None = Field(default=None, max_length=512)
+    fincast_repo_path: str | None = Field(default=None, max_length=512)
+    fincast_backend: str | None = Field(default=None, pattern=r"^(cpu|gpu|tpu)$")
+    fincast_forecast_mode: str | None = Field(default=None, pattern=r"^(average|last)$")
+    fincast_horizon: int | None = Field(default=None, ge=1, le=256)
+    fincast_signal_threshold: float | None = Field(default=None, ge=0)
+    fincast_exit_signal_threshold: float | None = Field(default=None, ge=0)
+    fincast_exit_threshold_mult: float | None = Field(default=None, gt=0)
+    fincast_timeframe_threshold_scale: bool | None = None
+    fincast_predict_on_candle_close: bool | None = None
+    fincast_fee_rate: float | None = Field(default=None, ge=0)
+    fincast_slippage_rate: float | None = Field(default=None, ge=0)
+    fincast_safety_margin: float | None = Field(default=None, ge=0)
 
     # autopilot
     autopilot_enabled: bool | None = None
@@ -103,7 +127,7 @@ class RuntimeConfigParams(BaseModel):
     autopilot_high_vol_consecutive_delta: int | None = Field(default=None, ge=0)
     autopilot_high_vol_threshold_mult: float | None = Field(default=None, gt=0)
 
-    @field_validator("timesfm_timeframe")
+    @field_validator("timesfm_timeframe", "fincast_timeframe")
     @classmethod
     def _validate_timeframe(cls, v: str | None) -> str | None:
         if v is None:
@@ -111,7 +135,7 @@ class RuntimeConfigParams(BaseModel):
         import re
 
         if not re.match(r"^\d+[mhdw]$", v.lower()):
-            raise ValueError("timesfm_timeframe must match e.g. 1m, 5m, 1h")
+            raise ValueError("timeframe must match e.g. 1m, 5m, 1h")
         return v.lower()
 
     def to_patch_dict(self) -> dict[str, Any]:
@@ -145,7 +169,35 @@ RUNTIME_PARAM_SCHEMA: list[dict[str, Any]] = [
     _schema_entry("symbol", group="market", type_="string", label="거래 심볼", tier="basic", example="XRPUSDT"),
     _schema_entry("signal_mode", group="signal", type_="enum", label="매매 모드", tier="basic", options=["long_only", "long_short"]),
     _schema_entry("signal_consecutive_required", group="signal", type_="int", label="연속 신호 횟수", tier="basic", min=1),
-    _schema_entry("timesfm_timeframe", group="timesfm", type_="string", label="캔들 주기", tier="basic", example="5m", hint="변경 시 서버 재시작 권장"),
+    _schema_entry(
+        "predictor_type",
+        group="predictor",
+        type_="enum",
+        label="예측 모델",
+        tier="basic",
+        options=["timesfm", "fincast"],
+        hint="선택 시 해당 모델 설정 그룹만 표시. 전환 시 엔진이 가중치를 다시 로드함",
+    ),
+    _schema_entry(
+        "timesfm_timeframe",
+        group="timesfm",
+        type_="string",
+        label="캔들 주기",
+        tier="basic",
+        example="5m",
+        hint="변경 시 poll 정렬/재시작 권장",
+        visible_when={"predictor_type": "timesfm"},
+    ),
+    _schema_entry(
+        "fincast_timeframe",
+        group="fincast",
+        type_="string",
+        label="캔들 주기",
+        tier="basic",
+        example="5m",
+        hint="변경 시 poll 정렬/재시작 권장",
+        visible_when={"predictor_type": "fincast"},
+    ),
     _schema_entry("leverage", group="exchange", type_="int", label="레버리지", tier="basic", min=1, max=125),
     _schema_entry("autopilot_enabled", group="autopilot", type_="bool", label="Autopilot", tier="basic"),
     _schema_entry("autopilot_score_percentile", group="autopilot", type_="number", label="진입 민감도", tier="basic", min=0, max=100, hint="Autopilot on"),
@@ -165,22 +217,35 @@ RUNTIME_PARAM_SCHEMA: list[dict[str, Any]] = [
     _schema_entry("sizing_max_leverage", group="sizing", type_="int", label="사이징 레버리지 상한", tier="advanced"),
     _schema_entry("risk_max_position_notional_pct", group="risk", type_="number", label="포지션 명목 상한 %", tier="advanced"),
     _schema_entry("risk_daily_loss_limit_pct", group="risk", type_="number", label="일일 손실 한도 %", tier="advanced"),
-    _schema_entry("risk_duplicate_order_window_seconds", group="risk", type_="int", label="중복 주문 방지(초)", tier="advanced"),
+    _schema_entry("risk_duplicate_order_window_seconds", group="risk", type_="int", label="중복 주문 창(초)", tier="advanced"),
     _schema_entry("risk_min_hold_seconds_before_signal_exit", group="risk", type_="int", label="최소 보유(초)", tier="advanced"),
     _schema_entry("risk_max_consecutive_losses", group="risk", type_="int", label="연속 손절 한도", tier="advanced"),
     _schema_entry("risk_consecutive_loss_pause_minutes", group="risk", type_="int", label="손절 후 휴식(분)", tier="advanced"),
     _schema_entry("risk_enabled", group="risk", type_="bool", label="리스크 체크", tier="advanced"),
     _schema_entry("flatten_on_shutdown", group="risk", type_="bool", label="종료 시 청산", tier="advanced"),
-    _schema_entry("timesfm_forecast_mode", group="timesfm", type_="enum", label="Forecast 모드", tier="advanced", options=["average", "last"]),
-    _schema_entry("timesfm_horizon", group="timesfm", type_="int", label="Horizon", tier="advanced", min=1, max=32),
-    _schema_entry("timesfm_signal_threshold", group="timesfm", type_="number", label="진입 threshold", tier="advanced", hint="null=Autopilot"),
-    _schema_entry("timesfm_exit_signal_threshold", group="timesfm", type_="number", label="청산 threshold", tier="advanced"),
-    _schema_entry("timesfm_exit_threshold_mult", group="timesfm", type_="number", label="청산 threshold 배수", tier="advanced"),
-    _schema_entry("timesfm_timeframe_threshold_scale", group="timesfm", type_="bool", label="TF threshold 스케일", tier="advanced"),
-    _schema_entry("timesfm_predict_on_candle_close", group="timesfm", type_="bool", label="캔들 close 시만 예측", tier="advanced"),
-    _schema_entry("timesfm_fee_rate", group="timesfm", type_="number", label="수수료율", tier="advanced"),
-    _schema_entry("timesfm_slippage_rate", group="timesfm", type_="number", label="슬리피지율", tier="advanced"),
-    _schema_entry("timesfm_safety_margin", group="timesfm", type_="number", label="안전 마진", tier="advanced"),
+    _schema_entry("timesfm_forecast_mode", group="timesfm", type_="enum", label="Forecast 모드", tier="advanced", options=["average", "last"], visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_horizon", group="timesfm", type_="int", label="Horizon", tier="advanced", min=1, max=32, visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_signal_threshold", group="timesfm", type_="number", label="진입 threshold", tier="advanced", hint="null=Autopilot", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_exit_signal_threshold", group="timesfm", type_="number", label="청산 threshold", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_exit_threshold_mult", group="timesfm", type_="number", label="청산 threshold 배수", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_timeframe_threshold_scale", group="timesfm", type_="bool", label="TF threshold 스케일", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_predict_on_candle_close", group="timesfm", type_="bool", label="캔들 close 시만 예측", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_fee_rate", group="timesfm", type_="number", label="수수료율", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_slippage_rate", group="timesfm", type_="number", label="슬리피지율", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("timesfm_safety_margin", group="timesfm", type_="number", label="안전 마진", tier="advanced", visible_when={"predictor_type": "timesfm"}),
+    _schema_entry("fincast_checkpoint_path", group="fincast", type_="string", label="체크포인트 경로 (.pth)", tier="advanced", hint="로컬 FinCast 가중치", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_repo_path", group="fincast", type_="string", label="FinCast-fts src 경로", tier="advanced", hint="ffm 패키지 경로", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_backend", group="fincast", type_="enum", label="추론 백엔드", tier="advanced", options=["gpu", "cpu"], visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_forecast_mode", group="fincast", type_="enum", label="Forecast 모드", tier="advanced", options=["average", "last"], visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_horizon", group="fincast", type_="int", label="Horizon", tier="advanced", min=1, max=256, visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_signal_threshold", group="fincast", type_="number", label="진입 threshold", tier="advanced", hint="null=Autopilot", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_exit_signal_threshold", group="fincast", type_="number", label="청산 threshold", tier="advanced", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_exit_threshold_mult", group="fincast", type_="number", label="청산 threshold 배수", tier="advanced", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_timeframe_threshold_scale", group="fincast", type_="bool", label="TF threshold 스케일", tier="advanced", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_predict_on_candle_close", group="fincast", type_="bool", label="캔들 close 시만 예측", tier="advanced", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_fee_rate", group="fincast", type_="number", label="수수료율", tier="advanced", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_slippage_rate", group="fincast", type_="number", label="슬리피지율", tier="advanced", visible_when={"predictor_type": "fincast"}),
+    _schema_entry("fincast_safety_margin", group="fincast", type_="number", label="안전 마진", tier="advanced", visible_when={"predictor_type": "fincast"}),
     _schema_entry("autopilot_score_k", group="autopilot", type_="number", label="Score K", tier="advanced"),
     _schema_entry("autopilot_base_tp_atr_mult", group="autopilot", type_="number", label="TP ATR 배수", tier="advanced"),
     _schema_entry("autopilot_base_sl_atr_mult", group="autopilot", type_="number", label="SL ATR 배수", tier="advanced"),
@@ -210,6 +275,20 @@ RUNTIME_PARAM_SCHEMA: list[dict[str, Any]] = [
         label="high_vol threshold 배수",
         tier="advanced",
     ),
+]
+
+PARAM_GROUPS: list[dict[str, Any]] = [
+    {"id": "market", "label": "마켓"},
+    {"id": "signal", "label": "신호"},
+    {"id": "predictor", "label": "예측 모델"},
+    {"id": "timesfm", "label": "TimesFM", "visible_when": {"predictor_type": "timesfm"}},
+    {"id": "fincast", "label": "FinCast", "visible_when": {"predictor_type": "fincast"}},
+    {"id": "exchange", "label": "거래소"},
+    {"id": "trade", "label": "익절/손절"},
+    {"id": "sizing", "label": "사이징"},
+    {"id": "risk", "label": "리스크"},
+    {"id": "run", "label": "런"},
+    {"id": "autopilot", "label": "Autopilot"},
 ]
 
 ADVANCED_PARAM_KEYS: tuple[str, ...] = tuple(
@@ -273,6 +352,9 @@ def engine_config_to_nested_dict(cfg: EngineConfig) -> dict[str, Any]:
         "predictor_type": cfg.predictor_type,
         "predictor_config": {
             "timesfm": asdict(tfm) if tfm else {},
+            "fincast": asdict(cfg.predictor_fincast_config)
+            if cfg.predictor_fincast_config
+            else {},
         },
         "risk_enabled": cfg.risk_enabled,
         "state_persist_path": str(cfg.state_persist_path) if cfg.state_persist_path else None,
@@ -370,6 +452,9 @@ def runtime_patch_to_nested(patch: dict[str, Any]) -> dict[str, Any]:
     if sp:
         out["signal_policy"] = sp
 
+    if "predictor_type" in patch:
+        out["predictor_type"] = patch["predictor_type"]
+
     tfm_map = {
         "timesfm_timeframe": "timeframe",
         "timesfm_forecast_mode": "forecast_mode",
@@ -389,6 +474,29 @@ def runtime_patch_to_nested(patch: dict[str, Any]) -> dict[str, Any]:
             tfm[nk] = patch[pk]
     if tfm:
         out.setdefault("predictor_config", {})["timesfm"] = tfm
+
+    fc_map = {
+        "fincast_timeframe": "timeframe",
+        "fincast_checkpoint_path": "checkpoint_path",
+        "fincast_repo_path": "repo_path",
+        "fincast_backend": "backend",
+        "fincast_forecast_mode": "forecast_mode",
+        "fincast_horizon": "horizon",
+        "fincast_signal_threshold": "signal_threshold",
+        "fincast_exit_signal_threshold": "exit_signal_threshold",
+        "fincast_exit_threshold_mult": "exit_threshold_mult",
+        "fincast_timeframe_threshold_scale": "timeframe_threshold_scale",
+        "fincast_predict_on_candle_close": "predict_on_candle_close",
+        "fincast_fee_rate": "fee_rate",
+        "fincast_slippage_rate": "slippage_rate",
+        "fincast_safety_margin": "safety_margin",
+    }
+    fc: dict[str, Any] = {}
+    for pk, nk in fc_map.items():
+        if pk in patch:
+            fc[nk] = patch[pk]
+    if fc:
+        out.setdefault("predictor_config", {})["fincast"] = fc
 
     ap_map = {
         "autopilot_enabled": "enabled",
@@ -430,14 +538,14 @@ def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
 def merge_runtime_config(base: EngineConfig, patch: dict[str, Any]) -> EngineConfig:
     """env 기반 EngineConfig + UI runtime patch → 새 EngineConfig."""
     from binnair_trading_engine.config.env_loader import (
-        _apply_timesfm_market_defaults,
+        _apply_predictor_market_defaults,
         _validate_signal_mode,
     )
 
     nested_patch = runtime_patch_to_nested(patch)
     merged = _deep_merge(engine_config_to_nested_dict(base), nested_patch)
     cfg = EngineConfig.from_dict(merged)
-    cfg = _apply_timesfm_market_defaults(cfg)
+    cfg = _apply_predictor_market_defaults(cfg)
     return _validate_signal_mode(cfg)
 
 
@@ -460,6 +568,7 @@ def split_config_tiers(cfg: EngineConfig) -> dict[str, dict[str, Any]]:
 def engine_config_to_runtime_params(cfg: EngineConfig) -> dict[str, Any]:
     """현재 effective 설정을 UI flat dict로 (env+runtime 반영 후)."""
     tfm = cfg.predictor_timesfm_config
+    fc = cfg.predictor_fincast_config
     ap = cfg.autopilot
     return {
         "run_id": cfg.run_context.run_id,
@@ -488,6 +597,7 @@ def engine_config_to_runtime_params(cfg: EngineConfig) -> dict[str, Any]:
         "flatten_on_shutdown": cfg.flatten_on_shutdown,
         "signal_mode": cfg.signal_policy.mode,
         "signal_consecutive_required": cfg.signal_policy.consecutive_required,
+        "predictor_type": cfg.predictor_type,
         "timesfm_timeframe": tfm.timeframe if tfm else "1m",
         "timesfm_forecast_mode": tfm.forecast_mode if tfm else "average",
         "timesfm_horizon": tfm.horizon if tfm else 3,
@@ -499,6 +609,24 @@ def engine_config_to_runtime_params(cfg: EngineConfig) -> dict[str, Any]:
         "timesfm_fee_rate": tfm.fee_rate if tfm else 0.0004,
         "timesfm_slippage_rate": tfm.slippage_rate if tfm else 0.0005,
         "timesfm_safety_margin": tfm.safety_margin if tfm else 0.0001,
+        "fincast_timeframe": fc.timeframe if fc else "1m",
+        "fincast_checkpoint_path": fc.checkpoint_path if fc else "",
+        "fincast_repo_path": fc.repo_path if fc else "",
+        "fincast_backend": fc.backend if fc else "gpu",
+        "fincast_forecast_mode": fc.forecast_mode if fc else "average",
+        "fincast_horizon": fc.horizon if fc else 3,
+        "fincast_signal_threshold": fc.signal_threshold if fc else None,
+        "fincast_exit_signal_threshold": fc.exit_signal_threshold if fc else None,
+        "fincast_exit_threshold_mult": fc.exit_threshold_mult if fc else 0.85,
+        "fincast_timeframe_threshold_scale": (
+            fc.timeframe_threshold_scale if fc else True
+        ),
+        "fincast_predict_on_candle_close": (
+            fc.predict_on_candle_close if fc else True
+        ),
+        "fincast_fee_rate": fc.fee_rate if fc else 0.0004,
+        "fincast_slippage_rate": fc.slippage_rate if fc else 0.0005,
+        "fincast_safety_margin": fc.safety_margin if fc else 0.0001,
         "autopilot_enabled": ap.enabled,
         "autopilot_score_percentile": ap.score_percentile,
         "autopilot_score_k": ap.score_k,

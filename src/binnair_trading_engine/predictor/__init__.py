@@ -1,8 +1,8 @@
 """
 예측기 패키지와 Predictor factory를 제공한다.
-설정에 따라 TimesFM 예측기를 생성하고, 검증용 Dummy/RuleBased 예측기를 노출한다.
+설정에 따라 TimesFM / FinCast 예측기를 생성하고, 검증용 Dummy/RuleBased 예측기를 노출한다.
 
-TimesFMPredictor는 torch/numpy 의존 — import 시점이 아닌 create_predictor()에서만 로드한다.
+TimesFMPredictor·FinCastPredictor는 torch 의존 — import 시점이 아닌 create_predictor()에서만 로드한다.
 (API 컨테이너는 [engine] extra 없이 동작)
 """
 
@@ -21,6 +21,7 @@ __all__ = [
     "DummyPredictor",
     "RuleBasedPredictor",
     "TimesFMPredictor",
+    "FinCastPredictor",
     "create_predictor",
 ]
 
@@ -30,7 +31,11 @@ def __getattr__(name: str):
         from binnair_trading_engine.predictor.timesfm_predictor import TimesFMPredictor
 
         return TimesFMPredictor
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    if name == "FinCastPredictor":
+        from binnair_trading_engine.predictor.fincast_predictor import FinCastPredictor
+
+        return FinCastPredictor
+    raise AttributeError(f"module {__name__!r} has no attribute {name}")
 
 
 def create_predictor(config, price_history_provider=None) -> Predictor:
@@ -40,6 +45,14 @@ def create_predictor(config, price_history_provider=None) -> Predictor:
     cfg: EngineConfig = config
     if cfg.predictor_type == "rule_based":
         return RuleBasedPredictor()
+    if cfg.predictor_type == "fincast":
+        from binnair_trading_engine.config.settings import PredictorFinCastConfig
+        from binnair_trading_engine.predictor.fincast_predictor import FinCastPredictor
+
+        return FinCastPredictor(
+            config=cfg.predictor_fincast_config or PredictorFinCastConfig(),
+            price_history_provider=price_history_provider,
+        )
     if cfg.predictor_type == "timesfm":
         from binnair_trading_engine.config.settings import PredictorTimesFMConfig
         from binnair_trading_engine.predictor.timesfm_predictor import TimesFMPredictor

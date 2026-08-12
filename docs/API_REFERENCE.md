@@ -274,7 +274,7 @@ UI 폼은 `GET /control/schema`의 **`tier`** 로 구분:
 
 | tier | 개수 | 예시 |
 |------|------|------|
-| `basic` | 9 | symbol, signal_mode, timesfm_timeframe, leverage, autopilot_*, trade_tp/sl |
+| `basic` | ~11 | symbol, signal_mode, predictor_type, timesfm/fincast_timeframe(visible_when), leverage, autopilot_*, trade_tp/sl |
 | `advanced` | ~36 | run_id, sizing_*, risk_*, timesfm 세부, autopilot ATR 등 |
 
 `env_only_keys`는 UI/API body에 포함하지 않음. 상세: [UI_CONTROL_GUIDE.md](./UI_CONTROL_GUIDE.md).
@@ -290,6 +290,7 @@ Content-Type: application/json
 {
   "symbol": "XRPUSDT",
   "signal_mode": "long_short",
+  "predictor_type": "timesfm",
   "timesfm_timeframe": "5m",
   "leverage": 2,
   "autopilot_enabled": true,

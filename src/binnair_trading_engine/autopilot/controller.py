@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from binnair_trading_engine.autopilot.calibration import ThresholdCalibrator
 from binnair_trading_engine.autopilot.models import AutopilotConfig, AutopilotState
@@ -13,8 +13,6 @@ from binnair_trading_engine.autopilot.persist import (
     resolve_autopilot_state_path,
 )
 from binnair_trading_engine.autopilot.regime import RegimeDetector
-from binnair_trading_engine.config.settings import PredictorTimesFMConfig
-from binnair_trading_engine.predictor.timesfm_predictor import TimesFMPredictor
 from binnair_trading_engine.signal.policy import ConsecutiveSignalPolicy
 from binnair_trading_engine.strategy.passthrough import PassthroughStrategy
 
@@ -24,19 +22,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _PredictorSignalConfig(Protocol):
+    fee_rate: float
+    slippage_rate: float
+    safety_margin: float
+    timeframe: str
+
+
 class AutopilotController:
     """매 tick threshold·TP/SL·consecutive 자동 적용."""
 
     def __init__(
         self,
         config: AutopilotConfig,
-        timesfm_config: PredictorTimesFMConfig | None,
+        predictor_signal_config: _PredictorSignalConfig | None = None,
         price_history_provider: PriceHistoryProvider | None = None,
         *,
         state_persist_path: Path | None = None,
+        # 하위 호환: 예전 호출부 timesfm_config=
+        timesfm_config: _PredictorSignalConfig | None = None,
     ) -> None:
         self._cfg = config
-        self._timesfm_config = timesfm_config or PredictorTimesFMConfig()
+        self._signal_config = predictor_signal_config or timesfm_config
+        if self._signal_config is None:
+            from binnair_trading_engine.config.settings import PredictorTimesFMConfig
+
+            self._signal_config = PredictorTimesFMConfig()
         self._price_history = price_history_provider
         self._calibrator = ThresholdCalibrator(
             window=config.score_window,
@@ -56,13 +67,13 @@ class AutopilotController:
             self._state_store = AutopilotStateStore(ap_path)
 
     def _fee_floor(self) -> float:
-        c = self._timesfm_config
+        c = self._signal_config
         return c.fee_rate * 2.0 + c.slippage_rate + c.safety_margin
 
     def _min_threshold(self) -> float:
         from binnair_trading_engine.predictor.timesfm_utils import compute_entry_threshold
 
-        return compute_entry_threshold(self._timesfm_config)
+        return compute_entry_threshold(self._signal_config)  # type: ignore[arg-type]
 
     def _load_bars(self, symbol: str) -> list[tuple[float, float, float]]:
         """(high, low, close) 바 목록 — True Range ATR 계산용."""
@@ -75,11 +86,11 @@ class AutopilotController:
             )
             return self._price_history.get_recent_ohlc(
                 symbol=symbol,
-                timeframe=self._timesfm_config.timeframe,
+                timeframe=self._signal_config.timeframe,
                 limit=need,
             )
         except Exception as e:
-            logger.debug("Autopilot OHLCV load failed: %s", e)
+            logger.debug("Autopilot OHLC load failed: %s", e)
             return []
 
     def initialize(
@@ -136,6 +147,11 @@ class AutopilotController:
         )
         self._regime = RegimeDetector(config)
 
+    def set_signal_config(self, signal_config: _PredictorSignalConfig | None) -> None:
+        """활성 predictor 설정(TimesFM/FinCast) 교체."""
+        if signal_config is not None:
+            self._signal_config = signal_config
+
     def _warmup_scores_from_db(
         self,
         run_id: str,
@@ -184,10 +200,12 @@ class AutopilotController:
         base_threshold = self._calibrator.compute_threshold(min_threshold)
         effective = base_threshold * regime.threshold_multiplier
 
-        if isinstance(predictor, TimesFMPredictor):
+        if hasattr(predictor, "set_thresholds"):
             from binnair_trading_engine.predictor.timesfm_utils import compute_exit_threshold
 
-            exit_thr = compute_exit_threshold(self._timesfm_config, effective)
+            exit_thr = compute_exit_threshold(
+                self._signal_config, effective  # type: ignore[arg-type]
+            )
             predictor.set_thresholds(effective, exit_thr)
 
         base_consecutive = self._cfg.base_consecutive_required

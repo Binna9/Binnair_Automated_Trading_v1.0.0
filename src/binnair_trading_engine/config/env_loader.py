@@ -167,7 +167,51 @@ def config_from_environ() -> EngineConfig:
                 ),
                 "model_version": _get("BINNAIR_TIMESFM_MODEL_VERSION", "timesfm-2.5-200m"),
                 "feature_set_version": _get("BINNAIR_TIMESFM_FEATURE_SET_VERSION", "price-history-v1"),
-            }
+            },
+            "fincast": {
+                "checkpoint_path": _get("BINNAIR_FINCAST_CHECKPOINT", ""),
+                "repo_path": _get("BINNAIR_FINCAST_REPO", ""),
+                "backend": _get("BINNAIR_FINCAST_BACKEND", "gpu"),
+                "freq": _int("BINNAIR_FINCAST_FREQ", 0),
+                "point_forecast_mode": _get("BINNAIR_FINCAST_POINT_FORECAST_MODE", "mean"),
+                "num_experts": _int("BINNAIR_FINCAST_NUM_EXPERTS", 4),
+                "gating_top_n": _int("BINNAIR_FINCAST_GATING_TOP_N", 2),
+                "load_from_compile": _bool("BINNAIR_FINCAST_LOAD_FROM_COMPILE", True),
+                "normalize_inputs": _bool("BINNAIR_FINCAST_NORMALIZE_INPUTS", True),
+                "use_ohlcv_history": _bool("BINNAIR_FINCAST_USE_OHLCV_HISTORY", True),
+                "timeframe": _get("BINNAIR_FINCAST_TIMEFRAME", "1m"),
+                "context_length": _int("BINNAIR_FINCAST_CONTEXT_LENGTH", 128),
+                "min_context": _int("BINNAIR_FINCAST_MIN_CONTEXT", 64),
+                "horizon": _int("BINNAIR_FINCAST_HORIZON", 3),
+                "forecast_mode": _get("BINNAIR_FINCAST_FORECAST_MODE", "average"),
+                "forecast_index": _int("BINNAIR_FINCAST_FORECAST_INDEX", -1),
+                "fee_rate": _float("BINNAIR_FINCAST_FEE_RATE", 0.0004),
+                "slippage_rate": _float("BINNAIR_FINCAST_SLIPPAGE_RATE", 0.0005),
+                "safety_margin": _float("BINNAIR_FINCAST_SAFETY_MARGIN", 0.0001),
+                "signal_threshold": _float_or_none("BINNAIR_FINCAST_SIGNAL_THRESHOLD"),
+                "exit_signal_threshold": _float_or_none(
+                    "BINNAIR_FINCAST_EXIT_SIGNAL_THRESHOLD"
+                ),
+                "exit_threshold_mult": _float("BINNAIR_FINCAST_EXIT_THRESHOLD_MULT", 0.85),
+                "timeframe_threshold_scale": _bool(
+                    "BINNAIR_FINCAST_TIMEFRAME_THRESHOLD_SCALE", True
+                ),
+                "ref_timeframe": _get("BINNAIR_FINCAST_REF_TIMEFRAME", "1m"),
+                "ref_horizon": _int("BINNAIR_FINCAST_REF_HORIZON", 3),
+                "min_threshold_fee_ratio": _float(
+                    "BINNAIR_FINCAST_MIN_THRESHOLD_FEE_RATIO", 0.25
+                ),
+                "predict_on_candle_close": _bool(
+                    "BINNAIR_FINCAST_PREDICT_ON_CANDLE_CLOSE", True
+                ),
+                "append_live_price_to_history": _bool(
+                    "BINNAIR_FINCAST_APPEND_LIVE_PRICE_TO_HISTORY", False
+                ),
+                "model_version": _get("BINNAIR_FINCAST_MODEL_VERSION", "fincast-1b"),
+                "feature_set_version": _get(
+                    "BINNAIR_FINCAST_FEATURE_SET_VERSION", "price-history-v1"
+                ),
+            },
         },
         "risk_enabled": _bool("BINNAIR_RISK_ENABLED", True),
         "state_persist_path": _get("BINNAIR_STATE_PERSIST_PATH"),
@@ -220,7 +264,7 @@ def config_from_environ() -> EngineConfig:
         },
     }
     cfg = EngineConfig.from_dict(data)
-    cfg = _apply_timesfm_market_defaults(cfg)
+    cfg = _apply_predictor_market_defaults(cfg)
     return _validate_signal_mode(cfg)
 
 
@@ -238,15 +282,25 @@ def _validate_signal_mode(cfg: EngineConfig) -> EngineConfig:
     return cfg
 
 
-def _apply_timesfm_market_defaults(cfg: EngineConfig) -> EngineConfig:
-    """TimesFM timeframe과 market poll interval 정렬."""
-    if cfg.predictor_type != "timesfm" or cfg.predictor_timesfm_config is None:
+def _active_predictor_signal_config(cfg: EngineConfig):
+    """활성 predictor의 threshold/timeframe 설정 (Autopilot·poll align용)."""
+    if cfg.predictor_type == "fincast":
+        return cfg.predictor_fincast_config
+    if cfg.predictor_type == "timesfm":
+        return cfg.predictor_timesfm_config
+    return None
+
+
+def _apply_predictor_market_defaults(cfg: EngineConfig) -> EngineConfig:
+    """활성 predictor timeframe과 market poll interval 정렬."""
+    pred_cfg = _active_predictor_signal_config(cfg)
+    if pred_cfg is None:
         return cfg
     if not _bool("BINNAIR_MARKET_ALIGN_POLL_WITH_TIMEFRAME", True):
         return cfg
     from binnair_trading_engine.market_data.timeframe import timeframe_to_seconds
 
-    tf_sec = timeframe_to_seconds(cfg.predictor_timesfm_config.timeframe)
+    tf_sec = timeframe_to_seconds(pred_cfg.timeframe)
     poll = cfg.market_data.poll_interval_seconds
     if poll < tf_sec:
         cfg.market_data.poll_interval_seconds = float(tf_sec)

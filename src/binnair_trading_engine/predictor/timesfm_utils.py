@@ -1,20 +1,17 @@
 """
-TimesFM threshold·timeframe 유틸.
+TimesFM / FinCast threshold·timeframe 유틸.
 
 timeframe 변경 시 score 스케일과 fee floor(왕복 원가)를 맞추고,
 poll interval과 캔들 주기 정렬에 쓴다.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 from binnair_trading_engine.market_data.timeframe import (
     timeframe_to_minutes,
     timeframe_to_seconds,
 )
-
-if TYPE_CHECKING:
-    from binnair_trading_engine.config.settings import PredictorTimesFMConfig
 
 __all__ = [
     "timeframe_to_minutes",
@@ -23,6 +20,7 @@ __all__ = [
     "compute_entry_threshold",
     "compute_exit_threshold",
 ]
+
 
 def compute_fee_floor(
     *,
@@ -35,13 +33,14 @@ def compute_fee_floor(
 
 
 def compute_entry_threshold(
-    config: "PredictorTimesFMConfig",
+    config: Any,
 ) -> float:
     """
     진입(BUY) 판정 threshold.
 
     signal_threshold가 지정되면 그대로 사용.
     아니면 fee_floor를 timeframe·horizon에 맞게 스케일 (긴 봉일수록 |score|가 작아지는 보정).
+    TimesFM / FinCast 설정 모두 동일 필드 스키마를 쓴다.
     """
     if config.signal_threshold is not None:
         return float(config.signal_threshold)
@@ -68,7 +67,7 @@ def compute_entry_threshold(
 
 
 def compute_exit_threshold(
-    config: "PredictorTimesFMConfig",
+    config: Any,
     entry_threshold: float,
 ) -> float:
     """청산(SELL/BUY) 판정 threshold — 모델 기반 청산용."""

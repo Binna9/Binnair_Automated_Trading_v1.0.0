@@ -53,8 +53,11 @@ class RuntimeControlService:
         self._repo = repo or RuntimeControlRepository()
 
     def get_schema(self) -> dict[str, Any]:
+        from binnair_trading_engine.config.runtime_config import PARAM_GROUPS
+
         return {
             "params": RUNTIME_PARAM_SCHEMA,
+            "groups": PARAM_GROUPS,
             "basic_keys": list(BASIC_PARAM_KEYS),
             "advanced_keys": list(ADVANCED_PARAM_KEYS),
             "env_only_keys": ENV_ONLY_KEYS,

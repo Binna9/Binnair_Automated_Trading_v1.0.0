@@ -36,24 +36,36 @@ env 전용 (env_only_keys)    ─┘   (UI에서 숨김, API 미수신)
 }
 ```
 
-### 기본 화면 (`tier: "basic"` — 9개)
+### 기본 화면 (`tier: "basic"`)
 
 | 키 | 라벨 | 비고 |
 |----|------|------|
 | `symbol` | 거래 심볼 | |
 | `signal_mode` | 매매 모드 | `long_only` \| `long_short` |
 | `signal_consecutive_required` | 연속 신호 횟수 | |
-| `timesfm_timeframe` | 캔들 주기 | `5m` 등. 변경 시 재시작 권장 |
+| `predictor_type` | 예측 모델 | `timesfm` \| `fincast` — 선택 시 해당 `group`만 표시 |
+| `timesfm_timeframe` | 캔들 주기 | `visible_when.predictor_type=timesfm` |
+| `fincast_timeframe` | 캔들 주기 | `visible_when.predictor_type=fincast` |
 | `leverage` | 레버리지 | |
 | `autopilot_enabled` | Autopilot | |
 | `autopilot_score_percentile` | 진입 민감도 | Autopilot on |
 | `trade_tp_pct` | 익절 % | Autopilot off |
 | `trade_sl_pct` | 손절 % | Autopilot off |
 
-### 고급 모드 (`tier: "advanced"` — 나머지 L1)
+### 고급 모드 (`tier: "advanced"`)
 
-run_id, strategy_id, poll_interval, margin_type, oco, sizing 4종, risk 8종, timesfm 세부, autopilot ATR/레짐 파라미터 등.  
-`params` 배열에서 `tier === "advanced"` 필터로 폼 생성.
+run_id, sizing, risk, **TimesFM 그룹** / **FinCast 그룹**(체크포인트·repo 경로 포함), autopilot ATR 등.  
+각 파라미터·그룹의 `visible_when`으로 현재 `predictor_type`에 맞는 폼만 렌더링한다.
+
+```json
+{
+  "key": "fincast_checkpoint_path",
+  "group": "fincast",
+  "visible_when": { "predictor_type": "fincast" }
+}
+```
+
+`GET /control/schema` 의 `groups` 배열도 동일 `visible_when`을 가진다 (`timesfm` / `fincast` 디렉터리 토글용).
 
 ### env 전용 (`env_only_keys` — UI 미표시)
 
@@ -154,14 +166,28 @@ interface SchemaParam {
   label: string;
   hint?: string;
   options?: string[];
+  visible_when?: Record<string, string>;
+}
+
+function isVisible(
+  p: SchemaParam,
+  values: Record<string, unknown>,
+): boolean {
+  if (!p.visible_when) return true;
+  return Object.entries(p.visible_when).every(
+    ([k, v]) => values[k] === v,
+  );
 }
 
 async function loadSchema() {
   const r = await fetch(`${BASE}/api/v1/control/schema`);
-  const { params, basic_keys, advanced_keys } = await r.json();
-  const basicFields = params.filter((p: SchemaParam) => p.tier === "basic");
-  const advancedFields = params.filter((p: SchemaParam) => p.tier === "advanced");
-  return { basicFields, advancedFields, basic_keys, advanced_keys };
+  const { params, groups, basic_keys, advanced_keys } = await r.json();
+  return { params, groups, basic_keys, advanced_keys };
+}
+
+// 폼 렌더: predictor_type 바뀌면 timesfm/fincast 그룹만 토글
+function fieldsFor(values: Record<string, unknown>, params: SchemaParam[]) {
+  return params.filter((p) => isVisible(p, values));
 }
 
 async function loadStatus() {

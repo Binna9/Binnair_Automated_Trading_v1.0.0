@@ -3,18 +3,26 @@ FROM python:3.12-bookworm
 ENV PYTHONUNBUFFERED=1 \
     TZ=Asia/Seoul \
     HF_HOME=/data/huggingface \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    BINNAIR_FINCAST_REPO=/opt/fincast/src
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl libpq-dev \
+    build-essential curl git libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY scripts ./scripts
 
-RUN pip install --upgrade pip && pip install ".[engine]"
+# TimesFM + FinCast 추론 공통 의존성
+RUN pip install --upgrade pip \
+    && pip install ".[engine,fincast]"
+
+# FinCast-fts (ffm 패키지). 가중치(.pth)는 이미지에 넣지 않고 /data 볼륨 사용
+RUN git clone --depth 1 https://github.com/vincent05r/FinCast-fts.git /opt/fincast \
+    && pip install -e /opt/fincast \
+    && pip install einops beartype "CoLT5-attention>=0.11"
 
 CMD ["python", "scripts/run_engine.py"]

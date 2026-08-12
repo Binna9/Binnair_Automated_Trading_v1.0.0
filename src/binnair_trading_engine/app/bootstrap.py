@@ -65,9 +65,13 @@ def bootstrap() -> TradingEngine:
 
     autopilot: AutopilotController | None = None
     if config.autopilot.enabled:
+        if config.predictor_type == "fincast":
+            signal_cfg = config.predictor_fincast_config
+        else:
+            signal_cfg = config.predictor_timesfm_config
         autopilot = AutopilotController(
             config=config.autopilot,
-            timesfm_config=config.predictor_timesfm_config,
+            predictor_signal_config=signal_cfg,
             price_history_provider=price_history_provider,
             state_persist_path=config.state_persist_path,
         )

@@ -26,7 +26,7 @@ TimesFM 예측 기반 자동매매 엔진 (Binance USD-M Futures). Paper trading
 
 | 영역 | 구현 내용 | 미구현 |
 |------|-----------|--------|
-| **Predictor** | TimesFM(zero-shot), Dummy, RuleBased | TimesFM은 DB OHLCV close 히스토리 기반. 재학습/파인튜닝 없음 |
+| **Predictor** | TimesFM(zero-shot), FinCast(optional), Dummy, RuleBased | 기본은 TimesFM. `BINNAIR_PREDICTOR_TYPE=fincast`로 전환 |
 | **Exchange** | Binance **Futures**(운영 기본), Spot, Paper | 거래소 네이티브 TP/SL 주문(`oco_enabled`)은 코드는 있으나 기본 비활성 — 로컬 폴링 기반 청산이 기본 경로 |
 | **Storage** | memory / postgres 백엔드 | Redis, Alembic 마이그레이션 없음 (`init_db.py`로 스키마 관리) |
 | **Market Data** | Binance REST OHLCV 폴링(`poll_interval_seconds`) | 시세 자체는 WebSocket 미사용 (User Data Stream만 WS) |
@@ -119,7 +119,8 @@ src/binnair_trading_engine/
 │   ├── interface.py       # Predictor
 │   ├── dummy.py           # DummyPredictor (테스트용)
 │   ├── rule_based.py       # RuleBasedPredictor (가격 규칙)
-│   └── timesfm_predictor.py # TimesFM 기반 zero-shot 예측, adaptive threshold
+│   ├── timesfm_predictor.py # TimesFM 기반 zero-shot 예측, adaptive threshold
+│   └── fincast_predictor.py # FinCast 1B 가중치 예측 (optional)
 ├── position/                # 포지션 관리
 │   └── manager.py          # PositionManager: open/close, restore_from_snapshot
 ├── risk/                    # 리스크 관리
@@ -152,7 +153,8 @@ scripts/
 ├── ingest_ohlcv.py                # Binance OHLCV 캔들 적재 (TimesFM 입력 히스토리)
 ├── run_engine.py                  # OHLCV 적재 + 매매 엔진 한 번에 실행
 ├── run_api.py                     # 조회 API 서버
-└── download_timesfm_weights.py    # TimesFM 가중치 다운로드
+├── download_timesfm_weights.py    # TimesFM 가중치 다운로드
+└── download_fincast_weights.py    # FinCast 체크포인트 다운로드 (HF)
 
 .env.dev                 # 로컬 개발 설정 (gitignore, BINNAIR_*)
 Dockerfile.engine / Dockerfile.api
@@ -175,7 +177,7 @@ Dockerfile.engine / Dockerfile.api
 | **exchange** | ExchangeAdapter. 운영 기본은 BinanceFuturesAdapter, 그 외 Spot/Paper |
 | **infra** | DB 모델, DTO, Repository. Postgres 연결 및 13개 테이블 CRUD |
 | **market_data** | MarketDataProvider, PriceHistoryProvider. close 시계열(TimesFM 입력)과 OHLC(autopilot ATR 입력) 둘 다 제공 |
-| **predictor** | Predictor. 운영 기본은 TimesFM, Dummy/RuleBased는 검증용 |
+| **predictor** | Predictor. 운영 기본은 TimesFM, `fincast`로 전환 가능. Dummy/RuleBased는 검증용 |
 | **position** | PositionManager: open/close, 미실현 PnL, DB 스냅샷 복구 |
 | **risk** | RiskChecker: 일손실/포지션한도/중복주문 검사 + 연속 손절 서킷브레이커. sizing: 잔고·손절거리 기반 수량 계산 |
 | **signal** | 모델 BUY/HOLD/SELL을 연속 N회 확인 후 주문 가능 신호로 필터링 (진입·청산 각각) |
@@ -269,6 +271,27 @@ Binance klines → ohlcv_candle upsert → PriceHistoryProvider → TimesFMPredi
 DB 히스토리가 `min_context`보다 부족하면 엔진 tick으로 쌓은 in-memory 가격 히스토리로 fallback한다.
 
 **TimesFM 상세 (threshold·5m·hold_reason):** [docs/TIMESFM.md](./docs/TIMESFM.md)
+
+### FinCast Predictor (optional)
+
+TimesFM을 유지한 채 `BINNAIR_PREDICTOR_TYPE=fincast`로 전환할 수 있다.
+
+```bash
+# 1) FinCast-fts 설치 (ffm 모듈)
+git clone https://github.com/vincent05r/FinCast-fts.git
+cd FinCast-fts && pip install -e .
+
+# 2) 체크포인트 다운로드
+python scripts/download_fincast_weights.py --list
+python scripts/download_fincast_weights.py --filename <실제.pth> --out-dir models/fincast
+
+# 3) env
+export BINNAIR_PREDICTOR_TYPE=fincast
+export BINNAIR_FINCAST_CHECKPOINT=/abs/path/to/fincast.pth
+export BINNAIR_FINCAST_REPO=/abs/path/to/FinCast-fts/src
+```
+
+체크포인트/모듈이 없으면 엔진은 죽지 않고 `HOLD(model_unloaded)`로 동작한다. 기본 predictor는 계속 TimesFM이다.
 
 ### CLI (설치 후)
 

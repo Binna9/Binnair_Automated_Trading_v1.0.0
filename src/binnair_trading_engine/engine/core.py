@@ -100,7 +100,12 @@ class TradingEngine:
     def apply_runtime_config(self, patch: dict) -> EngineConfig:
         """UI L1 patch를 env 기반 config에 병합하고 하위 컴포넌트에 반영."""
         from binnair_trading_engine.config.runtime_config import merge_runtime_config
+        from binnair_trading_engine.market_data import create_price_history_provider
+        from binnair_trading_engine.predictor import create_predictor
 
+        old_type = self._config.predictor_type
+        old_tfm = self._config.predictor_timesfm_config
+        old_fc = self._config.predictor_fincast_config
         new_cfg = merge_runtime_config(self._config, patch)
         self._config = new_cfg
         rc = new_cfg.run_context
@@ -114,6 +119,61 @@ class TradingEngine:
         self._signal_policy.set_mode(new_cfg.signal_policy.mode)
         if self._autopilot is not None:
             self._autopilot.update_config(new_cfg.autopilot)
+            if new_cfg.predictor_type == "fincast":
+                self._autopilot.set_signal_config(new_cfg.predictor_fincast_config)
+            else:
+                self._autopilot.set_signal_config(new_cfg.predictor_timesfm_config)
+
+        reload_predictor = new_cfg.predictor_type != old_type
+        if not reload_predictor and new_cfg.predictor_type == "fincast":
+            new_fc = new_cfg.predictor_fincast_config
+            reload_predictor = (
+                old_fc is None
+                or new_fc is None
+                or old_fc.checkpoint_path != new_fc.checkpoint_path
+                or old_fc.repo_path != new_fc.repo_path
+                or old_fc.backend != new_fc.backend
+                or old_fc.horizon != new_fc.horizon
+                or old_fc.context_length != new_fc.context_length
+            )
+        if not reload_predictor and new_cfg.predictor_type == "timesfm":
+            new_tfm = new_cfg.predictor_timesfm_config
+            reload_predictor = (
+                old_tfm is None
+                or new_tfm is None
+                or old_tfm.model_id != new_tfm.model_id
+                or old_tfm.horizon != new_tfm.horizon
+                or old_tfm.context_length != new_tfm.context_length
+            )
+
+        if reload_predictor:
+            provider = create_price_history_provider(new_cfg)
+            self._predictor = create_predictor(
+                new_cfg, price_history_provider=provider
+            )
+            logger.info(
+                "Predictor reloaded type=%s",
+                new_cfg.predictor_type,
+            )
+
+        # threshold 등 soft 필드는 모델 reload 없이도 반영
+        pred = self._predictor
+        if hasattr(pred, "set_thresholds") and hasattr(pred, "get_threshold"):
+            from binnair_trading_engine.predictor.timesfm_utils import (
+                compute_entry_threshold,
+                compute_exit_threshold,
+            )
+
+            signal_cfg = (
+                new_cfg.predictor_fincast_config
+                if new_cfg.predictor_type == "fincast"
+                else new_cfg.predictor_timesfm_config
+            )
+            if signal_cfg is not None:
+                entry = compute_entry_threshold(signal_cfg)
+                exit_thr = compute_exit_threshold(signal_cfg, entry)
+                pred.set_thresholds(entry, exit_thr)
+
         self._update_risk_from_config(new_cfg)
         logger.info(
             "Runtime config applied",
@@ -121,6 +181,7 @@ class TradingEngine:
                 "run_id": rc.run_id,
                 "strategy_id": rc.strategy_id,
                 "signal_mode": new_cfg.signal_policy.mode,
+                "predictor_type": new_cfg.predictor_type,
             },
         )
         return new_cfg

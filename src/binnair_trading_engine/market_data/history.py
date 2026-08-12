@@ -83,15 +83,26 @@ class OhlcvDbPriceHistoryProvider:
 
 def create_price_history_provider(config) -> PriceHistoryProvider | None:
     """설정에 따라 가격 히스토리 공급자를 생성한다."""
-    if getattr(config, "predictor_type", "") != "timesfm":
+    predictor_type = getattr(config, "predictor_type", "")
+    if predictor_type not in ("timesfm", "fincast"):
         return None
-    from binnair_trading_engine.config.settings import PredictorTimesFMConfig
 
-    timesfm_config = (
-        getattr(config, "predictor_timesfm_config", None)
-        or PredictorTimesFMConfig()
-    )
-    if not timesfm_config or not getattr(timesfm_config, "use_ohlcv_history", False):
+    if predictor_type == "fincast":
+        from binnair_trading_engine.config.settings import PredictorFinCastConfig
+
+        pred_config = (
+            getattr(config, "predictor_fincast_config", None)
+            or PredictorFinCastConfig()
+        )
+    else:
+        from binnair_trading_engine.config.settings import PredictorTimesFMConfig
+
+        pred_config = (
+            getattr(config, "predictor_timesfm_config", None)
+            or PredictorTimesFMConfig()
+        )
+
+    if not pred_config or not getattr(pred_config, "use_ohlcv_history", False):
         return None
     if getattr(config.storage, "backend", "postgres") != "postgres":
         logger.info("OHLCV history disabled: storage backend is not postgres")

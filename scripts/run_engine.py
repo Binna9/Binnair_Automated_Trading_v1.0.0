@@ -235,11 +235,12 @@ def main() -> int:
 
     cfg = load_config()
     symbol = cfg.market_data.symbol
-    timeframe = (
-        cfg.predictor_timesfm_config.timeframe
-        if cfg.predictor_timesfm_config
-        else "1m"
-    )
+    if cfg.predictor_type == "fincast" and cfg.predictor_fincast_config:
+        timeframe = cfg.predictor_fincast_config.timeframe
+    elif cfg.predictor_timesfm_config:
+        timeframe = cfg.predictor_timesfm_config.timeframe
+    else:
+        timeframe = "1m"
     poll_interval = cfg.market_data.poll_interval_seconds
     base_url = cfg.market_data.base_url
     python_bin = _python_bin()

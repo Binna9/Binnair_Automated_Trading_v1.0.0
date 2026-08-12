@@ -145,6 +145,46 @@ class PredictorTimesFMConfig:
 
 
 @dataclass
+class PredictorFinCastConfig:
+    """FinCast(CIKM 2025) 사전학습 가중치 예측기 설정.
+
+    FinCast-fts 레포의 `ffm` 모듈 + 로컬 `.pth` 체크포인트가 필요하다.
+    threshold/timeframe 필드는 TimesFM과 동일 스키마로 Autopilot·timesfm_utils 재사용.
+    """
+
+    checkpoint_path: str = ""
+    repo_path: str = ""  # FinCast-fts/src — sys.path에 추가해 ffm import
+    backend: str = "gpu"  # "gpu" | "cpu"
+    freq: int = 0  # 0=high(분봉 등), 1=medium, 2=low
+    point_forecast_mode: str = "mean"  # FinCast hparam: "mean" | "median"
+    num_experts: int = 4
+    gating_top_n: int = 2
+    load_from_compile: bool = True
+    normalize_inputs: bool = True
+    context_length: int = 128
+    min_context: int = 64
+    horizon: int = 3
+    forecast_mode: str = "average"  # 우리 score 집계: "average" | "last"
+    forecast_index: int = -1
+    use_ohlcv_history: bool = True
+    timeframe: str = "1m"
+    fee_rate: float = 0.0004
+    slippage_rate: float = 0.0005
+    safety_margin: float = 0.001
+    signal_threshold: float | None = None
+    exit_signal_threshold: float | None = None
+    exit_threshold_mult: float = 0.85
+    timeframe_threshold_scale: bool = True
+    ref_timeframe: str = "1m"
+    ref_horizon: int = 3
+    min_threshold_fee_ratio: float = 0.25
+    predict_on_candle_close: bool = True
+    append_live_price_to_history: bool = False
+    model_version: str = "fincast-1b"
+    feature_set_version: str = "price-history-v1"
+
+
+@dataclass
 class LiveStreamConfig:
     """Binance User Data Stream → API WebSocket 브리지 설정."""
 
@@ -178,6 +218,7 @@ class EngineConfig:
     signal_policy: SignalPolicyConfig = field(default_factory=SignalPolicyConfig)
     predictor_type: str = "timesfm"
     predictor_timesfm_config: PredictorTimesFMConfig | None = None
+    predictor_fincast_config: PredictorFinCastConfig | None = None
     risk_enabled: bool = True
     state_persist_path: Path | None = None
     log_level: str = "INFO"
@@ -375,6 +416,91 @@ class EngineConfig:
             model_version=tfm.get("model_version", PredictorTimesFMConfig.model_version),
             feature_set_version=tfm.get("feature_set_version", PredictorTimesFMConfig.feature_set_version),
         ) if tfm else None
+        fc = pc.get("fincast") or {}
+        pred_fincast = PredictorFinCastConfig(
+            checkpoint_path=str(
+                fc.get("checkpoint_path", PredictorFinCastConfig.checkpoint_path)
+            ),
+            repo_path=str(fc.get("repo_path", PredictorFinCastConfig.repo_path)),
+            backend=str(fc.get("backend", PredictorFinCastConfig.backend)),
+            freq=int(fc.get("freq", PredictorFinCastConfig.freq)),
+            point_forecast_mode=str(
+                fc.get("point_forecast_mode", PredictorFinCastConfig.point_forecast_mode)
+            ),
+            num_experts=int(fc.get("num_experts", PredictorFinCastConfig.num_experts)),
+            gating_top_n=int(fc.get("gating_top_n", PredictorFinCastConfig.gating_top_n)),
+            load_from_compile=bool(
+                fc.get("load_from_compile", PredictorFinCastConfig.load_from_compile)
+            ),
+            normalize_inputs=bool(
+                fc.get("normalize_inputs", PredictorFinCastConfig.normalize_inputs)
+            ),
+            context_length=int(
+                fc.get("context_length", PredictorFinCastConfig.context_length)
+            ),
+            min_context=int(fc.get("min_context", PredictorFinCastConfig.min_context)),
+            horizon=int(fc.get("horizon", PredictorFinCastConfig.horizon)),
+            forecast_mode=str(
+                fc.get("forecast_mode", PredictorFinCastConfig.forecast_mode)
+            ),
+            forecast_index=int(
+                fc.get("forecast_index", PredictorFinCastConfig.forecast_index)
+            ),
+            use_ohlcv_history=bool(
+                fc.get("use_ohlcv_history", PredictorFinCastConfig.use_ohlcv_history)
+            ),
+            timeframe=fc.get("timeframe", PredictorFinCastConfig.timeframe),
+            fee_rate=float(fc.get("fee_rate", PredictorFinCastConfig.fee_rate)),
+            slippage_rate=float(
+                fc.get("slippage_rate", PredictorFinCastConfig.slippage_rate)
+            ),
+            safety_margin=float(
+                fc.get("safety_margin", PredictorFinCastConfig.safety_margin)
+            ),
+            signal_threshold=(
+                float(fc["signal_threshold"])
+                if fc.get("signal_threshold") is not None
+                else None
+            ),
+            exit_signal_threshold=(
+                float(fc["exit_signal_threshold"])
+                if fc.get("exit_signal_threshold") is not None
+                else None
+            ),
+            exit_threshold_mult=float(
+                fc.get("exit_threshold_mult", PredictorFinCastConfig.exit_threshold_mult)
+            ),
+            timeframe_threshold_scale=bool(
+                fc.get(
+                    "timeframe_threshold_scale",
+                    PredictorFinCastConfig.timeframe_threshold_scale,
+                )
+            ),
+            ref_timeframe=fc.get("ref_timeframe", PredictorFinCastConfig.ref_timeframe),
+            ref_horizon=int(fc.get("ref_horizon", PredictorFinCastConfig.ref_horizon)),
+            min_threshold_fee_ratio=float(
+                fc.get(
+                    "min_threshold_fee_ratio",
+                    PredictorFinCastConfig.min_threshold_fee_ratio,
+                )
+            ),
+            predict_on_candle_close=bool(
+                fc.get(
+                    "predict_on_candle_close",
+                    PredictorFinCastConfig.predict_on_candle_close,
+                )
+            ),
+            append_live_price_to_history=bool(
+                fc.get(
+                    "append_live_price_to_history",
+                    PredictorFinCastConfig.append_live_price_to_history,
+                )
+            ),
+            model_version=fc.get("model_version", PredictorFinCastConfig.model_version),
+            feature_set_version=fc.get(
+                "feature_set_version", PredictorFinCastConfig.feature_set_version
+            ),
+        ) if fc else None
         sp = data.get("state_persist_path")
         api = data.get("api", {})
         default_api = ApiConfig()
@@ -449,6 +575,7 @@ class EngineConfig:
             signal_policy=signal_policy_cfg,
             predictor_type=data.get("predictor_type", "timesfm"),
             predictor_timesfm_config=pred_timesfm,
+            predictor_fincast_config=pred_fincast,
             risk_enabled=data.get("risk_enabled", True),
             state_persist_path=Path(sp) if sp else None,
             log_level=data.get("log_level", "INFO"),

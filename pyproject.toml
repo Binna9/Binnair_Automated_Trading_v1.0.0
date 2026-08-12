@@ -29,6 +29,13 @@ engine = [
     "torch>=2.0",
     "timesfm[torch]",
 ]
+# FinCast: clone https://github.com/vincent05r/FinCast-fts and `pip install -e .`
+# then set BINNAIR_FINCAST_REPO / BINNAIR_FINCAST_CHECKPOINT. huggingface_hub for download script.
+fincast = [
+    "torch>=2.0",
+    "huggingface_hub>=0.20",
+    "einops>=0.8",
+]
 redis = ["redis>=5.0"]
 dev = [
     "pytest>=7.4",
