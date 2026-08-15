@@ -23,6 +23,6 @@ RUN pip install --upgrade pip \
 # FinCast-fts (ffm 패키지). 가중치(.pth)는 이미지에 넣지 않고 /data 볼륨 사용
 RUN git clone --depth 1 https://github.com/vincent05r/FinCast-fts.git /opt/fincast \
     && pip install -e /opt/fincast \
-    && pip install einops beartype "CoLT5-attention>=0.11"
+    && pip install einops beartype "CoLT5-attention>=0.11" pandas
 
 CMD ["python", "scripts/run_engine.py"]

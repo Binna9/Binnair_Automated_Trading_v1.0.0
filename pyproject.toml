@@ -35,6 +35,8 @@ fincast = [
     "torch>=2.0",
     "huggingface_hub>=0.20",
     "einops>=0.8",
+    "pandas>=2.0",
+    "numpy>=1.26",
 ]
 redis = ["redis>=5.0"]
 dev = [

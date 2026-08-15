@@ -37,6 +37,7 @@ class RuntimeControlPoller:
             logger.info(
                 "No runtime state in DB — trading disabled until UI start"
             )
+            self._process_commands()
             return
         self._last_config_version = state.config_version
         if state.config_json:
@@ -67,6 +68,8 @@ class RuntimeControlPoller:
             state.config_version,
             state.trading_enabled,
         )
+        # 부팅 중 UI가 먼저 start 해둔 경우: 강제 off 직후 pending start 반영
+        self._process_commands()
 
     def _sync_engine_run_trading_status(
         self, trading_enabled: bool, run_id: str | None = None
