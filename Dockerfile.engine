@@ -13,16 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
+COPY requirements-fincast.txt ./
 COPY src ./src
 COPY scripts ./scripts
 
-# TimesFM + FinCast 추론 공통 의존성
+# TimesFM (engine) + FinCast 추론 의존성 전부
 RUN pip install --upgrade pip \
-    && pip install ".[engine,fincast]"
+    && pip install ".[engine]" \
+    && pip install -r requirements-fincast.txt
 
-# FinCast-fts (ffm 패키지). 가중치(.pth)는 이미지에 넣지 않고 /data 볼륨 사용
+# FinCast-fts (ffm). 가중치(.pth)는 /data 볼륨 — 이미지에 넣지 않음
 RUN git clone --depth 1 https://github.com/vincent05r/FinCast-fts.git /opt/fincast \
     && pip install -e /opt/fincast \
-    && pip install einops beartype "CoLT5-attention>=0.11" pandas
+    && python -c "from ffm import FFM, FFmHparams; import einx, einops, pandas, jax, sklearn, utilsforecast; print('FinCast import smoke OK')"
 
 CMD ["python", "scripts/run_engine.py"]

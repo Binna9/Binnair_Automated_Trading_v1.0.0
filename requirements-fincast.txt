@@ -1,0 +1,18 @@
+# FinCast-fts inference deps (from upstream requirement_v2.txt + load-path imports).
+# Excludes train/UI-only: tensorflow, wandb, matplotlib, yfinance, peft, pillow, etc.
+# Source audit: vincent05r/FinCast-fts requirement_v2.txt + src/ffm + src/st_moe_pytorch
+
+numpy>=1.26
+pandas>=2.0
+scipy>=1.11
+scikit-learn>=1.3
+tqdm>=4.66
+absl-py>=2.0
+utilsforecast>=0.2
+einops>=0.8
+einx>=0.3
+beartype>=0.14
+CoLT5-attention>=0.11
+# ffm_base imports xreg_lib → jax
+jax>=0.4
+huggingface_hub>=0.20

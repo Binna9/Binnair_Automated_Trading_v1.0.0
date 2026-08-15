@@ -31,12 +31,23 @@ engine = [
 ]
 # FinCast: clone https://github.com/vincent05r/FinCast-fts and `pip install -e .`
 # then set BINNAIR_FINCAST_REPO / BINNAIR_FINCAST_CHECKPOINT. huggingface_hub for download script.
+# FinCast: clone FinCast-fts + install requirements-fincast.txt (inference set).
+# Dockerfile.engine installs that file and runs an import smoke check at build time.
 fincast = [
     "torch>=2.0",
     "huggingface_hub>=0.20",
     "einops>=0.8",
+    "einx>=0.3",
+    "beartype>=0.14",
+    "CoLT5-attention>=0.11",
     "pandas>=2.0",
     "numpy>=1.26",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "tqdm>=4.66",
+    "absl-py>=2.0",
+    "utilsforecast>=0.2",
+    "jax>=0.4",
 ]
 redis = ["redis>=5.0"]
 dev = [
