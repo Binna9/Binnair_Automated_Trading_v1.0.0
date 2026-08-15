@@ -36,6 +36,35 @@ BASIC_PARAM_KEYS: tuple[str, ...] = (
 # 하위 호환
 UI_PARAM_KEYS = BASIC_PARAM_KEYS
 
+# predictor_type 선택 시 run identity 자동 정렬 (UI/DB 잔여 timesfm 라벨 방지)
+PREDICTOR_IDENTITY_DEFAULTS: dict[str, dict[str, str]] = {
+    "timesfm": {
+        "run_id": "prod_timesfm_run",
+        "strategy_id": "timesfm_passthrough",
+        "model_version": "timesfm-2.5-200m",
+        "feature_set_version": "price-history-v1",
+    },
+    "fincast": {
+        "run_id": "prod_fincast_run",
+        "strategy_id": "fincast_passthrough",
+        "model_version": "fincast-1b",
+        "feature_set_version": "price-history-v1",
+    },
+}
+
+
+def apply_predictor_identity_defaults(patch: dict[str, Any]) -> dict[str, Any]:
+    """predictor_type이 있으면 run_id/strategy/model을 해당 프리셋으로 맞춤."""
+    pt = patch.get("predictor_type")
+    if not isinstance(pt, str):
+        return patch
+    defaults = PREDICTOR_IDENTITY_DEFAULTS.get(pt)
+    if not defaults:
+        return patch
+    out = dict(patch)
+    out.update(defaults)
+    return out
+
 
 class RuntimeConfigParams(BaseModel):
     """UI start/save body — L1 전체 (전부 optional)."""
@@ -542,6 +571,7 @@ def merge_runtime_config(base: EngineConfig, patch: dict[str, Any]) -> EngineCon
         _validate_signal_mode,
     )
 
+    patch = apply_predictor_identity_defaults(patch)
     nested_patch = runtime_patch_to_nested(patch)
     merged = _deep_merge(engine_config_to_nested_dict(base), nested_patch)
     cfg = EngineConfig.from_dict(merged)

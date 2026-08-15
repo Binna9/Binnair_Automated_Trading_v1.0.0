@@ -44,6 +44,8 @@ class RuntimeControlRepository:
         active: bool,
         user_id: str = "default",
     ) -> None:
-        """UI 매매 on/off ↔ engine_run.status (running|paused)."""
+        """UI 매매 on/off ↔ engine_run.status (running|paused). 활성 run 1개만 running."""
+        if active:
+            self._repos.engine_run.pause_other_running(user_id, except_run_id=run_id)
         status = "running" if active else "paused"
         self._repos.engine_run.update_status(run_id, status, user_id=user_id)

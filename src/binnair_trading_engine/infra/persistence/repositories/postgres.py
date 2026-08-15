@@ -298,6 +298,32 @@ class EngineRunPostgresRepository(_BasePostgresRepository):
         finally:
             session.close()
 
+    def pause_other_running(self, user_id: str, except_run_id: str) -> int:
+        """같은 user의 다른 running 세션을 paused로 — 모델/run 전환 시 1개만 활성."""
+        session = self._session()
+        try:
+            rows = (
+                session.execute(
+                    select(EngineRunModel).where(
+                        EngineRunModel.user_id == user_id,
+                        EngineRunModel.status == "running",
+                        EngineRunModel.run_id != except_run_id,
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for row in rows:
+                row.status = "paused"
+            session.commit()
+            return len(rows)
+        except Exception as e:
+            session.rollback()
+            logger.exception("EngineRun pause_other_running failed: %s", e)
+            raise
+        finally:
+            session.close()
+
     def get_by_run_id(self, run_id: str) -> dict | None:
         session = self._session()
         try:

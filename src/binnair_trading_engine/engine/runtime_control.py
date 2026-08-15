@@ -74,14 +74,32 @@ class RuntimeControlPoller:
     def _sync_engine_run_trading_status(
         self, trading_enabled: bool, run_id: str | None = None
     ) -> None:
+        """활성 run 행 upsert + (on이면) 다른 running 세션 pause."""
         rid = run_id or self._engine._ctx.run_id
-        status = "running" if trading_enabled else "paused"
         try:
-            self._repos.engine_run.update_status(
-                rid, status, user_id=self._user_id
+            self._engine._storage.record_engine_start(
+                ctx=self._engine._ctx,
+                paper_mode=self._engine._config.exchange.paper_mode,
+                config_snapshot=self._engine._build_config_snapshot(),
+                trading_enabled=trading_enabled,
             )
+            if trading_enabled:
+                self._repos.engine_run.pause_other_running(
+                    self._user_id, except_run_id=self._engine._ctx.run_id
+                )
+            else:
+                self._repos.engine_run.update_status(
+                    rid, "paused", user_id=self._user_id
+                )
         except Exception:
-            logger.exception("engine_run status sync failed run_id=%s", rid)
+            logger.exception("engine_run identity sync failed")
+            status = "running" if trading_enabled else "paused"
+            try:
+                self._repos.engine_run.update_status(
+                    rid, status, user_id=self._user_id
+                )
+            except Exception:
+                logger.exception("engine_run status sync failed run_id=%s", rid)
 
     def poll(self) -> None:
         """pending command 처리 + config_version 변경 동기화."""

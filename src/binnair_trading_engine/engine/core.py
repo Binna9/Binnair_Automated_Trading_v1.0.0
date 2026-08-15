@@ -113,6 +113,10 @@ class TradingEngine:
         self._ctx.strategy_id = rc.strategy_id
         self._ctx.model_version = rc.model_version
         self._ctx.feature_set_version = rc.feature_set_version
+        if hasattr(self._position_manager, "_run_id"):
+            self._position_manager._run_id = rc.run_id
+        if self._autopilot is not None and hasattr(self._autopilot, "_run_id"):
+            self._autopilot._run_id = rc.run_id
         self._signal_policy.set_consecutive_required(
             new_cfg.signal_policy.consecutive_required
         )

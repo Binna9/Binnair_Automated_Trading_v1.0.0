@@ -90,7 +90,11 @@ class RuntimeControlService:
             for k, v in (state.config_json if state else {}).items()
             if k in RUNTIME_PARAM_KEYS
         }
-        merged_patch = {**prev, **patch}
+        from binnair_trading_engine.config.runtime_config import (
+            apply_predictor_identity_defaults,
+        )
+
+        merged_patch = apply_predictor_identity_defaults({**prev, **patch})
         effective = merge_runtime_config(base, merged_patch)
         enabled = (
             trading_enabled
