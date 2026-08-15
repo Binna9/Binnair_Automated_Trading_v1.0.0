@@ -102,7 +102,11 @@ def bootstrap() -> TradingEngine:
         signal_policy=signal_policy,
         autopilot=autopilot,
     )
-    if config.storage.backend == "postgres":
-        enabled = runtime_state.trading_enabled if runtime_state else False
-        engine.set_trading_enabled(enabled)
+    # 프로세스 기동 ≠ 매매 시작. DB에 trading_enabled=true가 남아 있어도
+    # UI Start 전까지는 항상 off (sync_on_startup에서도 동일하게 강제).
+    engine.set_trading_enabled(False)
+    if runtime_state and runtime_state.trading_enabled:
+        logger.info(
+            "Ignoring persisted trading_enabled=true on boot — wait for UI start"
+        )
     return engine

@@ -88,8 +88,8 @@ autopilot_enabled === false
 
 ### 전제
 - Docker/서버 **프로세스 기동** = 엔진 프로세스만 올라감 (tick·명령 poll은 동작).
-- **기동 직후 매매는 꺼져 있음:** `trading_enabled=false`, `engine_run.status=paused`.
-- **UI 「매매 시작」** 을 눌러야 실제 주문·진입이 시작된다.
+- **기동 직후 매매는 항상 꺼짐:** DB에 이전 `trading_enabled=true`가 있어도 복원하지 않고 `false`로 강제. `engine_run.status=paused`.
+- **UI 「매매 시작」** 을 눌러야 실제 주문·진입이 시작된다. (재배포/재기동 후 자동 재개 없음)
 - 버튼: **「매매 시작」** / **「매매 중지」** (프로세스 kill 아님)
 
 | 동작 | API |

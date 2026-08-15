@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from binnair_trading_engine.config.runtime_config import engine_config_to_runtime_params
 from binnair_trading_engine.config.runtime_loader import load_runtime_state
+from binnair_trading_engine.infra.persistence.dto import EngineRuntimeStateUpsert
 from binnair_trading_engine.infra.persistence.repositories.postgres import (
     PostgresRepositoryFactory,
 )
@@ -28,7 +29,7 @@ class RuntimeControlPoller:
         self._last_config_version: int | None = None
 
     def sync_on_startup(self) -> None:
-        """기동 시 DB runtime state 반영."""
+        """기동 시 L1 설정만 반영. 매매는 항상 off (UI Start 필요)."""
         state = load_runtime_state(self._user_id)
         if state is None:
             self._engine.set_trading_enabled(False)
@@ -40,12 +41,31 @@ class RuntimeControlPoller:
         self._last_config_version = state.config_version
         if state.config_json:
             self._engine.apply_runtime_config(state.config_json)
-        self._engine.set_trading_enabled(state.trading_enabled)
-        self._sync_engine_run_trading_status(state.trading_enabled, state.run_id)
+        # 설정은 복원하되 매매 플래그는 강제 off + DB에도 맞춤
+        # (안 그러면 API status / config sync가 다시 true로 끌어올림)
+        self._engine.set_trading_enabled(False)
+        if state.trading_enabled:
+            try:
+                self._repos.engine_runtime_state.upsert(
+                    EngineRuntimeStateUpsert(
+                        user_id=state.user_id,
+                        run_id=state.run_id,
+                        strategy_id=state.strategy_id,
+                        config_json=dict(state.config_json or {}),
+                        config_version=state.config_version,
+                        trading_enabled=False,
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to clear persisted trading_enabled on startup"
+                )
+        self._sync_engine_run_trading_status(False, state.run_id)
         logger.info(
-            "Runtime state loaded: trading_enabled=%s config_version=%s",
-            state.trading_enabled,
+            "Runtime config loaded on boot (trading forced off) "
+            "config_version=%s was_trading_enabled=%s",
             state.config_version,
+            state.trading_enabled,
         )
 
     def _sync_engine_run_trading_status(

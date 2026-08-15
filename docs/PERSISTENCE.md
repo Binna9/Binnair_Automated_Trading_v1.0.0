@@ -111,7 +111,7 @@ python scripts/init_db.py --drop
 
 흐름: UI → `PUT/POST /api/v1/control/*` → DB 저장 → 엔진 `RuntimeControlPoller`가 명령 poll → `merge_runtime_config(env, L1)` → tick 실행.
 
-- **프로세스 기동 직후:** `trading_enabled=false`, `engine_run.status=paused` (UI Start 전까지 매매 없음)
+- **프로세스 기동 직후:** 항상 `trading_enabled=false`로 강제(DB true여도 덮어씀), `engine_run.status=paused` (UI Start 전까지 매매 없음)
 - `trading_enabled=false` (UI Stop): 신규 진입만 중단. `engine_run.status=paused`. 보유 포지션 TP/SL·청산은 계속
 - `trading_enabled=true` (UI Start): `engine_run.status=running`
 - `engine_run.status=stopped`: 엔진 **프로세스** 종료 시에만 (UI Stop과 다름)
